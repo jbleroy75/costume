@@ -1,0 +1,16 @@
+import assert from 'node:assert/strict';
+import {normalizeEmbroidery,LOCATIONS} from '../dist/embroidery.js';
+import {normalizeTailoring,configurationRows,encodeConfiguration,decodeConfiguration,GROUPS} from '../dist/catalog.js';
+import {positionCounts} from '../dist/detail-positions.js';
+import {studioImage} from '../dist/design-assets.js';
+const demo=normalizeEmbroidery();assert.equal(demo.length,5);assert(demo.every(e=>e.text==='Paul'&&!e.enabled));
+const migrated=normalizeTailoring({monogramText:'JB',monogramFont:'police-103'});assert(migrated.embroidery[0].enabled);assert.equal(migrated.embroidery[0].text,'JB');
+const edits=LOCATIONS.map((l,i)=>({location:l.id,enabled:true,text:i?'Léonie 李':'Paul\u0000',font:'police-103',color:'#ab12ff'}));
+const t=normalizeTailoring({embroidery:edits,vestEnabled:false});assert.equal(t.embroidery[0].text,'Paul');assert.equal(t.embroidery[1].text,'Léonie 李');
+const state={tailoring:t};assert.deepEqual(decodeConfiguration(encodeConfiguration(state)),state);
+let rows=configurationRows(state).filter(r=>r.field.startsWith('Inscription'));assert.equal(rows.length,4);assert(rows.every(r=>r.value.includes('Police 103')));
+rows=configurationRows({tailoring:{...t,vestEnabled:true}}).filter(r=>r.field.startsWith('Inscription'));assert.equal(rows.length,5);
+const expected=[[0,0],[1,0],[1,1],[2,0],[3,0],[0,3],[2,1],[1,2],[3,1],[2,2],[1,3]];
+const g=GROUPS.find(g=>g.id==='buttonholePosition');g.options.forEach((o,i)=>{assert.deepEqual(positionCounts(o.id),expected[i]);});
+for(const group of GROUPS)group.options.forEach((o,i)=>assert(studioImage(group.id,i),`${group.id}/${o.id} has no illustration`));
+console.log('PASS: all 221 options illustrated, wearer-side buttonhole positions, five inscriptions, legacy migration, multiple-location export and Unicode sharing.');

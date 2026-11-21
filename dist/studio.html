@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#f5f3ee">
+  <title>Atelier — Votre costume, en détail</title>
+  <meta name="description" content="Créez votre costume : veste simple ou croisée, revers, tissus, couleurs et motifs. Un simulateur visuel interactif.">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%23212824'/%3E%3Ctext x='32' y='47' text-anchor='middle' font-family='Georgia' font-size='46' fill='%23f4f1e9'%3EA%3C/text%3E%3C/svg%3E">
+  <link rel="preload" href="./assets/simple-notch.png" as="image">
+  <link rel="stylesheet" href="./style.css?v=atelier-studio-5">
+<link rel="stylesheet" href="./fitting-room.css">
+<link rel="stylesheet" href="./measure-guide.css">
+</head>
+<body>
+  <header class="site-header">
+    <a class="brand" href="./" aria-label="Atelier, accueil">Atelier<span class="brand-dot">.</span></a>
+    <div class="header-caption">Le configurateur sur mesure</div>
+    <button class="text-action" id="reset" title="Revenir au costume initial"><span aria-hidden="true">↺</span> Recommencer</button>
+  </header>
+  <main class="atelier">
+    <section class="preview" aria-label="Aperçu de votre costume">
+      <div class="preview-heading"><span class="eyebrow">VOTRE CRÉATION</span><span class="view-label" id="view-caption">Vue de face · aperçu simplifié</span></div>
+      <div class="canvas-stage" id="stage">
+        <canvas id="suit" width="768" height="1152" role="img" aria-label="Costume bleu marine, veste simple à revers crantés"></canvas>
+        <canvas id="suit-volume" hidden tabindex="0" role="img" aria-label="Costume en volume. Faites glisser ou utilisez les flèches pour tourner."></canvas>
+        <div class="compare-layer" id="compare-layer" hidden><canvas id="before" width="768" height="1152" role="img" aria-label="Costume original bleu marine"></canvas></div>
+        <div class="comparison-labels" id="comparison-labels" hidden><span>Original</span><span>Votre création</span></div>
+        <figure id="angle-scene" hidden><div class="angle-photo"><img alt=""><span class="angle-stitch" hidden></span></div><figcaption aria-live="polite"></figcaption></figure>
+        <figure id="trouser-scene" hidden><canvas id="trouser-canvas" width="640" height="960" role="img" aria-label="Pantalon seul"></canvas><figcaption><span id="trouser-perspective"></span><strong id="trouser-caption" aria-live="polite"></strong></figcaption><p id="trouser-status" role="status" hidden></p></figure>
+        <div class="loading" id="loading" role="status"><span class="loader"></span>Préparation du costume…</div>
+        <div class="error-banner" id="error-banner" hidden role="alert"></div>
+      </div>
+      <div id="trouser-camera" role="group" aria-label="Cadrage du pantalon" hidden><button type="button" data-frame="full">En pied</button><button type="button" data-frame="close">Gros plan</button><button type="button" data-frame="suit">Costume entier</button></div>
+      <button id="selected-detail" type="button" hidden><img alt=""><span><small>DÉTAIL SÉLECTIONNÉ</small><strong></strong></span><b aria-hidden="true">↗</b></button>
+      <button id="return-front" class="tool-button" type="button" hidden>Revoir le costume de face</button><div class="preview-toolbar">
+        <button class="tool-button" id="volume-toggle" aria-pressed="false" hidden>Vue 3D</button>
+        <button class="tool-button" id="bust-view" aria-pressed="false" hidden>Buste</button>
+        <button class="tool-button" id="compare" aria-pressed="false"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 2v16M3 4h14v12H3z"/></svg>Comparer</button>
+        <div class="zoom-controls"><button id="zoom-out" aria-label="Dézoomer" disabled>−</button><button id="zoom-reset" aria-label="Réinitialiser le zoom">100 %</button><button id="zoom-in" aria-label="Zoomer">+</button></div>
+        <button class="tool-button export-mini" id="export-mini" aria-label="Télécharger le rendu"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 2v10m-4-4 4 4 4-4M3 13v4h14v-4"/></svg></button>
+      </div>
+      <div class="compare-control" id="compare-control" hidden><label for="compare-slider">Avant / après</label><input id="compare-slider" type="range" min="0" max="100" value="50" aria-label="Position de la comparaison"></div>
+      <div class="preview-summary"><span class="live-dot" aria-hidden="true"></span><span id="live-summary">Laine peignée · Bleu marine · Uni</span></div>
+    </section>
+    <aside class="configuration" aria-label="Personnalisation du costume">
+      <div class="panel-heading"><p class="eyebrow">LE CONFIGURATEUR</p><h1>Mon atelier.</h1><p class="intro">Composez votre costume, pièce par pièce.</p></div>
+      <nav class="tabs" role="tablist" aria-label="Étapes de personnalisation">
+<button role="tab" id="tab-fabric" aria-controls="panel-fabric" aria-selected="true" tabindex="0" data-tab="fabric"><span>01</span>Tissu</button>
+<button role="tab" id="tab-style" aria-controls="panel-style" aria-selected="false" tabindex="-1" data-tab="style"><span>02</span>Veste</button>
+<button role="tab" id="tab-trousers" aria-controls="panel-trousers" aria-selected="false" tabindex="-1" data-tab="trousers"><span>03</span>Pantalon</button>
+<button role="tab" id="tab-vest" aria-controls="panel-vest" aria-selected="false" tabindex="-1" data-tab="vest"><span>04</span>Gilet</button>
+<button role="tab" id="tab-finish" aria-controls="panel-finish" aria-selected="false" tabindex="-1" data-tab="finish"><span>05</span>Finitions</button>
+<button role="tab" id="tab-mesures" aria-controls="panel-mesures" aria-selected="false" tabindex="-1" data-tab="mesures"><span>06</span>Mesures</button>
+<button role="tab" id="tab-review" aria-controls="panel-review" aria-selected="false" tabindex="-1" data-tab="review"><span>07</span>Récapitulatif</button>
+</nav>
+      <p class="flow-progress" id="flow-progress" aria-live="polite">Étape 1 sur 7 · Tissu</p><div class="panel-content"><section id="panel-fabric" role="tabpanel" aria-labelledby="tab-fabric" tabindex="0"><section id="supplier-fabrics" aria-label="Catalogue de tissus fournisseur"><div class="flow-detail-title"><p class="eyebrow">TISSUTHÈQUE</p><h2>Choisissez votre tissu.</h2><p>Les vraies photos du fournisseur, avec une référence unique pour votre composition.</p></div><label class="supplier-search-label" for="supplier-search">Rechercher un tissu</label><input id="supplier-search" type="search" placeholder="Référence, couleur, composition…"><details class="swatch-filters"><summary>Filtrer les étoffes</summary><div class="supplier-filters"><select id="supplier-family" aria-label="Filtrer par couleur"></select><select id="supplier-collection" aria-label="Filtrer par collection"></select><select id="supplier-motif" aria-label="Filtrer par motif"></select><select id="supplier-composition" aria-label="Filtrer par code de composition"></select></div><label class="supplier-favorites"><input type="checkbox" id="supplier-favorites-only"> Mes favoris</label></details><p id="supplier-count" aria-live="polite"></p><div id="supplier-selection" hidden><strong id="supplier-selection-name"></strong><button id="supplier-clear" type="button">Revenir à l’essai libre</button></div><div id="supplier-grid"></div><p id="supplier-empty" hidden>Aucun tissu ne correspond à ces filtres.</p><button id="supplier-more" type="button" hidden>Voir plus de tissus</button><div id="supplier-comparison" aria-label="Comparaison des tissus" hidden></div><p class="supplier-note">Photographies des étoffes du fournisseur. La teinte et l’échelle du motif sur le costume sont indicatives.</p></section><details class="free-fabric"><summary>Essai libre · matières et couleurs simulées</summary><div id="free-fabric-controls"><div class="section-title"><h2>La matière</h2><span id="fabric-label">Laine peignée</span></div>
+          <div class="fabric-grid" id="fabrics" role="group" aria-label="Matière du costume"></div>
+          <p class="selection-description" id="fabric-description">Un grain fin, un tombé net.</p><div class="section-title second"><h2>La couleur</h2><span id="color-label">Bleu marine</span></div>
+          <div class="color-grid" id="colors" role="group" aria-label="Couleur du costume"></div>
+          
+          
+          <div class="section-title second"><h2>Le motif</h2><span id="pattern-label">Uni</span></div>
+          <div class="pattern-grid" id="patterns" role="group" aria-label="Motif du tissu"></div>
+          <div class="pattern-adjustments" id="pattern-adjustments" hidden>
+            <div class="range-row"><label for="pattern-scale">Échelle du motif</label><span id="scale-value">100 %</span></div><input id="pattern-scale" type="range" min="60" max="160" value="100" step="5">
+            <div class="range-row"><label for="pattern-contrast">Contraste</label><span id="contrast-value">Équilibré</span></div><input id="pattern-contrast" type="range" min="15" max="85" value="50" step="5">
+          </div>
+          
+        </div></details><div class="flow-navigation"><button class="flow-next" data-next="style">Veste <span aria-hidden="true">→</span></button></div></section>
+<section id="panel-style" role="tabpanel" aria-labelledby="tab-style" tabindex="0" hidden>
+          <div class="flow-detail-title"><h2>Votre veste</h2><p>Choisissez la fermeture, les revers, puis les détails de construction.</p></div><div id="step-coat-options"></div><div class="flow-navigation"><button class="flow-back" data-next="fabric">← Tissu</button><button class="flow-next" data-next="trousers">Pantalon <span aria-hidden="true">→</span></button></div></section>
+<section id="panel-trousers" role="tabpanel" aria-labelledby="tab-trousers" tabindex="0" hidden><div class="flow-detail-title"><h2>Votre pantalon</h2><p>Choisissez les pinces, puis les poches et la ceinture. Chaque détail s’affiche en gros plan.</p></div><div id="step-trouser-options"></div><div class="flow-navigation"><button class="flow-back" data-next="style">← Veste</button><button class="flow-next" data-next="vest">Gilet <span aria-hidden="true">→</span></button></div></section>
+<section id="panel-vest" role="tabpanel" aria-labelledby="tab-vest" tabindex="0" hidden><div class="flow-detail-title"><h2>Avec ou sans gilet ?</h2><p>Le gilet est facultatif. Activez-le pour composer un trois pièces.</p></div><div class="vest-editorial"><img src="./assets/studio/jacket-12.webp" alt="Gilet en laine bleu marine sur chemise blanche" loading="lazy"><div><span class="eyebrow">LE TROIS PIÈCES</span><h3>La touche finale.</h3><p>Une silhouette structurée, un style à part entière.</p></div></div><div id="step-vest-toggle"></div><div id="vest-step-options"><div id="step-vest-options"></div></div><p class="subtle-note" id="vest-skip-note">Sans gilet : vous pouvez passer directement aux finitions.</p><div class="flow-navigation"><button class="flow-back" data-next="trousers">← Pantalon</button><button class="flow-next" data-next="finish">Finitions <span aria-hidden="true">→</span></button></div></section>
+<section id="panel-finish" role="tabpanel" aria-labelledby="tab-finish" tabindex="0" hidden>
+          <div class="flow-detail-title"><h2>Les finitions</h2><p>Choisissez les boutons et la doublure, puis ajoutez votre broderie.</p></div><div id="step-finish-options"></div><div id="step-finish-fields"></div><div class="flow-detail-title"><h2>Vos inscriptions</h2><p>Activez un ou plusieurs emplacements, puis écrivez votre texte. « Paul » est proposé pour visualiser chaque position. Le style et la couleur du fil se règlent pour chaque inscription.</p></div><div id="embroidery-editor"></div><div class="flow-navigation"><button class="flow-back" data-next="vest">← Gilet</button><button class="flow-next" data-next="mesures">Mesures <span aria-hidden="true">→</span></button></div></section>
+<section id="panel-mesures" role="tabpanel" aria-labelledby="tab-mesures" tabindex="0" hidden><div class="flow-detail-title"><p class="eyebrow">LE GUIDE DES MESURES</p><h2>Vos mesures</h2><p>Portez une chemise légère et gardez le ruban horizontal, au contact du corps. Faites-vous aider pour le dos et les manches. Chaque champ est facultatif.</p></div><form id="measure-fields" onsubmit="return false"></form><div class="flow-navigation"><button class="flow-back" data-next="finish">← Finitions</button><button class="flow-next" data-next="review">Récapitulatif →</button></div></section>
+<section id="panel-review" role="tabpanel" aria-labelledby="tab-review" tabindex="0" hidden><div class="flow-detail-title"><h2>Votre composition</h2><p>Relisez vos choix et téléchargez votre fiche pour le tailleur.</p></div><div class="recap"><p class="eyebrow">VOTRE COMPOSITION</p><dl id="recap"></dl></div><div id="step-review-sheet"></div><div id="step-review-notes"></div><div id="step-review-export"></div><button class="secondary-action" id="print-sheet">Imprimer la fiche / PDF</button><button class="secondary-action" id="copy-link"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="m8 12 4-4m-5 5-1 1a3 3 0 0 1-4-4l4-4a3 3 0 0 1 4 0m0 0 4-4a3 3 0 0 1 4 4l-4 4a3 3 0 0 1-4 0"/></svg>Copier le lien du costume (hors mesures)</button><div class="flow-navigation"><button class="flow-back" data-next="mesures">← Mesures</button></div></section>
+<section id="panel-catalog" aria-label="Références du catalogue" hidden>
+          <div class="catalog-intro"><p class="eyebrow">PERSONNALISATION</p><h2>Chaque détail compte.</h2><p id="catalog-count">Options de personnalisation</p></div>
+          <p class="catalog-notice">Vos choix sont enregistrés dans votre composition. Le grand aperçu reste indicatif.</p>
+          <div class="catalog-category-tabs" role="group" aria-label="Catégories du catalogue"><button data-category-tab="coat" aria-pressed="true">Veste</button><button data-category-tab="trousers" aria-pressed="false">Pantalon</button><button data-category-tab="vest" aria-pressed="false">Gilet</button><button data-category-tab="finish" aria-pressed="false">Finitions</button></div>
+          <label class="catalog-search-label" for="catalog-search">Rechercher une option ou une référence</label><input class="catalog-search" id="catalog-search" type="search" placeholder="Revers, Gurkha, ZM001…">
+          <label class="vest-toggle"><span><strong>Costume trois pièces</strong><small>Inclure un gilet dans ma composition</small></span><input id="catalog-vestEnabled" type="checkbox"></label>
+          <div id="catalog-groups"></div><p id="catalog-empty" hidden>Aucune option ne correspond à cette recherche.</p>
+          <div class="catalog-fields">
+            <p class="eyebrow">VOTRE DOUBLURE</p>
+            <div id="custom-width-row" hidden><label for="catalog-lapelCustomWidth">Largeur personnalisée des revers · cm</label><input id="catalog-lapelCustomWidth" type="number" min="4" max="20" step="0.1" placeholder="Ex. 10,5"></div>
+            <label for="catalog-liningReference">Couleur ou description de doublure</label><input id="catalog-liningReference" type="text" maxlength="160" placeholder="Ex. paisley bordeaux">
+
+            <label for="catalog-customNotes">Instructions complémentaires au tailleur</label><textarea id="catalog-customNotes" maxlength="1000" rows="3" placeholder="Précisions sur les détails choisis…"></textarea>
+          </div>
+          <details class="catalog-sheet"><summary>Ma fiche de configuration <small id="catalog-choice-count">Deux pièces</small></summary><dl id="catalog-recap"></dl></details>
+          <div class="catalog-export"><button id="catalog-export-txt">Télécharger la fiche</button></div>
+        </section></div>
+<div class="panel-footer"><div class="footer-recap"><span id="footer-style">Simple · Revers crantés</span><small id="footer-fabric">Bleu marine / Laine peignée</small></div><button class="primary-action" id="download">Enregistrer l’aperçu <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 2v10m-4-4 4 4 4-4M3 13v4h14v-4"/></svg></button><p class="render-note">Aperçu indicatif. Les illustrations de coupe sont des créations visuelles ; les détails de confection doivent être validés avec votre tailleur.</p></div>
+    </aside>
+  </main>
+  <dialog id="detail-zoom" aria-labelledby="detail-title"><form method="dialog"><button aria-label="Fermer">×</button></form><p class="eyebrow">RÉFÉRENCE FOURNISSEUR</p><h2 id="detail-title"></h2><img alt="" id="detail-picture"></dialog><section id="print-dossier" aria-label="Fiche de confection"></section><div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+<dialog class="supplier-dialog" id="supplier-dialog" aria-labelledby="supplier-detail-title"><header><h2 id="supplier-detail-title"></h2><button id="supplier-detail-close" aria-label="Fermer">×</button></header><div class="fabric-pair"><figure><img id="supplier-detail-image" alt="Photo originale du tissu fournisseur"><figcaption>Échantillon fournisseur</figcaption></figure><figure><canvas width="384" height="420" id="supplier-on-jacket" role="img" aria-label="Rendu du tissu sur votre veste"></canvas><figcaption>Sur votre veste</figcaption></figure></div><p id="fabric-render-status" role="status"></p><p id="supplier-detail-meta"></p><p class="supplier-note">Le poids est indiqué en g/m, comme sur l’étiquette. Les noms complets des fibres et l’échelle réelle du motif restent à confirmer.</p><button id="supplier-detail-pick" class="primary-action" type="button">Choisir ce tissu</button></dialog>
+  <noscript><p class="noscript">Activez JavaScript pour personnaliser votre costume.</p></noscript>
+  <script type="module" src="./app.js?v=atelier-studio-5"></script>
+</body>
+</html>

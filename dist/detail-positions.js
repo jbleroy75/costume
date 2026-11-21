@@ -1,0 +1,1 @@
+export function positionCounts(id){if(id==='aucune')return [0,0];if(id==='gauche-et-droite-1-chacune')return [1,1];let l=0,r=0;const a=id.match(/gauche-(\d)/),b=id.match(/droite-(\d)/);if(a)l=Number(a[1]);if(b)r=Number(b[1]);return [l,r];}

@@ -1,0 +1,23 @@
+import assert from 'node:assert/strict';
+import {readFile} from 'node:fs/promises';
+import {STEPS,STEP_LABELS,CATEGORY_TARGETS} from '../dist/flow.js';
+import {GROUPS} from '../dist/catalog.js';
+const html=await readFile(new URL('../dist/studio.html',import.meta.url),'utf8');
+assert.ok(!html.includes('data-closure='),'no duplicate basic jacket selectors');
+assert.ok(!html.includes('data-lapel='),'no duplicate basic lapel selectors');
+assert.ok(!html.includes('id="buttons"'),'no duplicate basic button controls');
+assert.deepEqual(STEPS,['fabric','style','trousers','vest','finish','mesures','review']);
+const tabs=[...html.matchAll(/role="tab" id="tab-([^"]+)"/g)].map(m=>m[1]);
+assert.deepEqual(tabs,STEPS,'visible steps follow the intended garment sequence');
+const visible=[...html.matchAll(/<section id="panel-([^"]+)"[^>]*>/g)].filter(m=>!m[0].includes(' hidden')).map(m=>m[1]);
+assert.deepEqual(visible,['fabric'],'start on the fabric step');
+for(const step of STEPS){assert.ok(html.includes(`id="tab-${step}"`));assert.ok(html.includes(`id="panel-${step}"`));}
+for(const m of html.matchAll(/data-next="([^"]+)"/g))assert.ok(STEPS.includes(m[1]),'every next/back action points to a real step');
+for(const group of GROUPS)assert.ok(CATEGORY_TARGETS[group.category],`${group.id} has a destination in the flow`);
+for(const target of Object.values(CATEGORY_TARGETS))assert.ok(html.includes(`id="${target}"`));
+const ids=new Set([...html.matchAll(/\bid="([^"]+)"/g)].map(m=>m[1]));
+const js=await readFile(new URL('../dist/flow.js',import.meta.url),'utf8');
+for(const m of js.matchAll(/\$\('([^']+)'\)/g))assert.ok(ids.has(m[1]),`missing flow destination ${m[1]}`);
+assert.ok(html.includes('id="vest-skip-note"'),'optional waistcoat has a skip explanation');
+assert.equal(STEP_LABELS.length,STEPS.length);
+console.log('PASS: seven-step order, material-first entry, valid next/back routes, all 25 option sections routed to their garment, optional waistcoat and final review.');

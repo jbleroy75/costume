@@ -1,0 +1,4 @@
+User-agent: *
+Disallow: /admin
+Disallow: /api/
+Sitemap: https://atelier-costumes-jb.jbl-leroy.chatgpt.site/sitemap.xml

@@ -1,0 +1,14 @@
+import assert from 'node:assert/strict';
+import {readFileSync} from 'node:fs';import {createHash} from 'node:crypto';import {createRequire} from 'node:module';
+import {SUPPLIER_FABRICS,getSupplierFabric} from '../dist/supplier-fabric-data.js';
+import {filterFabrics} from '../dist/supplier-fabrics.js';
+import {normalize,prepareSource,renderPixels} from '../dist/render-engine.js';
+import {configurationRows,encodeConfiguration,decodeConfiguration} from '../dist/catalog.js';
+const legacy=SUPPLIER_FABRICS.filter(f=>f.supplier==="EUNZ");
+assert.equal(SUPPLIER_FABRICS.length,82);assert.equal(new Set(SUPPLIER_FABRICS.map(f=>f.id)).size,82);
+for(const f of SUPPLIER_FABRICS){const file=readFileSync(new URL('../dist/'+f.image.slice(2),import.meta.url));assert.equal(createHash('sha256').update(file).digest('hex'),f.imageSha256);assert.equal(f.weightUnit,f.collection==='NO790'?null:'g/m');assert.equal(f.scaleMillimeters,null);assert.equal(f.price,null);assert.equal(f.availability,null);assert(f.baseRGB.every(n=>n>=0&&n<=255));const c=normalize({supplierFabric:f.id,tailoring:{}});assert.equal(c.supplierFabric,f.id);assert.deepEqual(decodeConfiguration(encodeConfiguration(c)),c);const rows=configurationRows(c);assert(rows.some(r=>r.category==='Tissu'&&r.value.includes(f.reference)));assert(rows.some(r=>r.value===f.compositionCode));assert(rows.some(r=>r.value===(f.weightValue==null?"Non renseigné":`${f.weightValue} g/m`)));}
+assert.equal(filterFabrics(SUPPLIER_FABRICS,{query:'18062-258'}).length,1);assert.equal(filterFabrics(SUPPLIER_FABRICS,{query:'rouges'}).length,2);assert.equal(filterFabrics(legacy,{family:'Noirs'}).length,1);assert.equal(filterFabrics(SUPPLIER_FABRICS,{collection:'18061'}).length,5);assert.equal(filterFabrics(SUPPLIER_FABRICS,{composition:'T71 R29'}).length,2);assert.equal(filterFabrics(SUPPLIER_FABRICS,{favoritesOnly:true,favorites:['18061-233']}).length,1);
+assert.notEqual(getSupplierFabric('18061-233').id,getSupplierFabric('18062-257').id);assert(!normalize({supplierFabric:'fake'}).supplierFabric);assert(!normalize({supplierFabric:null}).supplierFabric);
+const require=createRequire(import.meta.url),sharp=require(require.resolve('sharp',{paths:[process.env.CODEX_PRIMARY_RUNTIME_NODE_MODULES]}));const {data}=await sharp(new URL('../dist/assets/simple-notch.png',import.meta.url).pathname).resize(256,384).ensureAlpha().raw().toBuffer({resolveWithObject:true});const source=prepareSource(data,256,384,'single_notch');
+for(const f of SUPPLIER_FABRICS){const out=renderPixels(source,{supplierFabric:f.id});assert.notDeepEqual(out,data,'supplier selection changes preview');for(const [x,y]of [[2,2],[128,32],[128,46]]){const i=(y*256+x)*4;assert.deepEqual([...out.slice(i,i+4)],[...data.slice(i,i+4)],'background and shirt are preserved');}}
+console.log('PASS: 82 catalog image hashes, exact labels/references, linear-meter weights, filters/favorites, share/export and supplier-preview mask preservation.');
