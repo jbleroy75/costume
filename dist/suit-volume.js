@@ -28,12 +28,12 @@ export function garmentGeometry(part,reflected=false,detail=1){
     }
   }
   rings.push(rows.at(-1));
-  const front=[],uvFabric=[];
+  const front=[],uvFabric=[],panel=[];
   for(const [y,l,r,depth] of rings){
     const center=reflected?382-(l+r)/2:(l+r)/2,radius=(r-l)/2;
     // The photograph is reliable on the front; the sides and back receive tiled cloth instead.
     // Neck and shirt cuffs read the same all round, so they keep the photograph everywhere.
-    const allRound=(part==='collar'&&y<44)||(part==='sleeve'&&y>=252);
+    const neck=part==='collar'&&y<44,cuff=part==='sleeve'&&y>=252;
     const ringStart=pos.length/3;
     for(let i=0;i<=segments;i++){
       const a=i*2*Math.PI/segments-Math.PI,cs=Math.cos(a),sn=Math.sin(a);
@@ -46,8 +46,10 @@ export function garmentGeometry(part,reflected=false,detail=1){
       pos.push((x-191)/100,(542-y)/100,z/100);
       uv.push((center+(x-center)*.985)/384,1-y/576);
       surface.push(i/segments,(542-y)/180);
-      const t=Math.min(1,Math.max(0,(cs-.12)/.38));
-      front.push(allRound?1:t*t*(3-2*t));
+      // Behind the neck the jacket collar rises over the shirt: only its top edge keeps the photograph.
+      const t=Math.min(1,Math.max(0,(cs-.2)/.2));
+      front.push(cuff||(neck&&(cs>=0||y<34))?1:t*t*(3-2*t));
+      panel.push(part==='body'?1:0);
     }
     // Cloth coordinates in world units (one scale everywhere): arc length measured from the front
     // centre on the front half and from the back centre on the back half, like cut panels joined by
@@ -59,7 +61,8 @@ export function garmentGeometry(part,reflected=false,detail=1){
     for(let i=1;i<quarter;i++)arc[i]=arc[i-1]+step(i);
     for(let i=segments-1;i>segments-quarter;i--)arc[i]=arc[i+1]-step(i+1);
     const shift=(reflected?7:0)+(part==='sleeve'?3:0);
-    for(let i=0;i<=segments;i++)uvFabric.push(arc[i]+shift,pos[3*(ringStart+i)+1]);
+    // Swatch coordinates: 200 render px per unit across; rows match the front render (2 px per frame px).
+    for(let i=0;i<=segments;i++)uvFabric.push((arc[i]+shift)*200/PATCH_WIDTH,1-2*y/PATCH_HEIGHT);
   }
   const geo=new T.BufferGeometry();
   for(const front of [true,false]){
@@ -77,6 +80,7 @@ export function garmentGeometry(part,reflected=false,detail=1){
   geo.setAttribute('uv1',new T.Float32BufferAttribute(surface,2));
   geo.setAttribute('front',new T.Float32BufferAttribute(front,1));
   geo.setAttribute('uvFabric',new T.Float32BufferAttribute(uvFabric,2));
+  geo.setAttribute('panel',new T.Float32BufferAttribute(panel,1));
   geo.computeVertexNormals();
   return geo;
 }
@@ -131,6 +135,7 @@ export function tailoredPanel(rows,rolled){
   geo.setAttribute('uv',new T.Float32BufferAttribute(uv,2));
   geo.setAttribute('front',new T.Float32BufferAttribute(new Float32Array(positions.length/3).fill(1),1));
   geo.setAttribute('uvFabric',new T.Float32BufferAttribute(new Float32Array(positions.length/3*2),2));
+  geo.setAttribute('panel',new T.Float32BufferAttribute(new Float32Array(positions.length/3),1));
   geo.computeVertexNormals();return geo;
 }
 
@@ -154,6 +159,22 @@ function gradientTexture(stops,size=512,grain=0){
   const t=new T.CanvasTexture(c);t.colorSpace=T.SRGBColorSpace;return t;
 }
 
+// Back of the jacket: centre-back seam from collar to hem, and the vents chosen in the catalogue
+// (object space: x across, y up, z < 0 behind). Seams are a pressed line with a soft shadow beside it.
+const BACK_SEAMS=`vec4 photoTexel=texture2D(map,vMapUv);
+vec4 clothTexel=texture2D(clothMap,vCloth);
+diffuseColor*=mix(clothTexel,photoTexel,vFront);
+float behind=vPanel*(1.0-vFront)*smoothstep(-0.02,-0.08,vObject.z);
+float hem=step(2.62,vObject.y)*(1.0-step(3.16,vObject.y));
+float centre=behind*(1.0-smoothstep(0.003,0.009,abs(vObject.x)))*step(2.62,vObject.y)*(1.0-step(4.74,vObject.y));
+float centreVent=hem*float(vents==1);
+float lap=behind*centreVent*smoothstep(0.03,0.0,vObject.x)*step(0.0,vObject.x)*0.18;
+float sides=behind*hem*float(vents>=2)*(1.0-smoothstep(0.003,0.009,abs(abs(vObject.x)-0.47)));
+float sideLap=behind*hem*float(vents>=2)*smoothstep(0.03,0.0,0.47-abs(vObject.x))*step(abs(vObject.x),0.47)*0.18;
+float strap=behind*float(vents==3)*step(2.86,vObject.y)*(1.0-step(2.92,vObject.y))*(1.0-smoothstep(0.03,0.04,abs(abs(vObject.x)-0.47)));
+diffuseColor.rgb*=1.0-0.42*max(centre*(1.0+0.4*centreVent),sides*1.3)-lap-sideLap;
+diffuseColor.rgb*=1.0-0.16*strap+0.10*strap*smoothstep(2.88,2.9,vObject.y);`;
+
 export function createStudio(host,original){
   let renderer;
   try{renderer=new T.WebGLRenderer({canvas:host,antialias:true,alpha:false,preserveDrawingBuffer:true});}catch{renderer=null;}
@@ -174,15 +195,15 @@ export function createStudio(host,original){
   const cloth=new T.CanvasTexture(document.createElement('canvas'));
   cloth.colorSpace=T.SRGBColorSpace;cloth.wrapS=cloth.wrapT=T.MirroredRepeatWrapping;
   cloth.anisotropy=texture.anisotropy;
-  const clothScale=new T.Vector2(200/PATCH_WIDTH,200/PATCH_HEIGHT);
+  const vents={value:2};
   photo.onBeforeCompile=shader=>{
-    Object.assign(shader.uniforms,{clothMap:{value:cloth},clothScale:{value:clothScale}});
+    Object.assign(shader.uniforms,{clothMap:{value:cloth},vents});
     shader.vertexShader=shader.vertexShader
-      .replace('#include <common>','#include <common>\nattribute float front;\nattribute vec2 uvFabric;\nvarying float vFront;\nvarying vec2 vCloth;')
-      .replace('#include <begin_vertex>','#include <begin_vertex>\nvFront=front;vCloth=uvFabric;');
+      .replace('#include <common>','#include <common>\nattribute float front;\nattribute float panel;\nattribute vec2 uvFabric;\nvarying float vFront;\nvarying float vPanel;\nvarying vec2 vCloth;\nvarying vec3 vObject;')
+      .replace('#include <begin_vertex>','#include <begin_vertex>\nvFront=front;vPanel=panel;vCloth=uvFabric;vObject=position;');
     shader.fragmentShader=shader.fragmentShader
-      .replace('#include <common>','#include <common>\nuniform sampler2D clothMap;\nuniform vec2 clothScale;\nvarying float vFront;\nvarying vec2 vCloth;')
-      .replace('#include <map_fragment>','vec4 photoTexel=texture2D(map,vMapUv);\nvec4 clothTexel=texture2D(clothMap,vCloth*clothScale);\ndiffuseColor*=mix(clothTexel,photoTexel,vFront);');
+      .replace('#include <common>','#include <common>\nuniform sampler2D clothMap;\nuniform int vents;\nvarying float vFront;\nvarying float vPanel;\nvarying vec2 vCloth;\nvarying vec3 vObject;')
+      .replace('#include <map_fragment>',BACK_SEAMS);
   };
   const side=new T.MeshStandardMaterial({roughness:.95});
   const garment=new T.Group();scene.add(garment);
@@ -280,6 +301,7 @@ export function createStudio(host,original){
     },
     zoom(v){zoom=v;paint();},
     update(color,state,swatch){
-      if(swatch){cloth.image=swatch;cloth.needsUpdate=true;}for(const mesh of details)mesh.visible=state?.closure==='double'&&state.tailoring?.coatLapel==='en-pointe';rgb=color;if(software)cpuPixels=original.getContext('2d').getImageData(0,0,original.width,original.height).data;side.color.setRGB(...rgb.map(c=>c/255),T.SRGBColorSpace);photo.sheenColor.setRGB(...rgb.map(c=>Math.min(1,c/255*1.25+.03)),T.SRGBColorSpace);texture.needsUpdate=true;paint();}
+      if(swatch){cloth.image=swatch;cloth.needsUpdate=true;}
+      vents.value={'sans-fente':0,'fente-centrale':1,'deux-fentes-laterales':2,'fentes-laterales-avec-patte':3}[state?.tailoring?.coatVents]??2;for(const mesh of details)mesh.visible=state?.closure==='double'&&state.tailoring?.coatLapel==='en-pointe';rgb=color;if(software)cpuPixels=original.getContext('2d').getImageData(0,0,original.width,original.height).data;side.color.setRGB(...rgb.map(c=>c/255),T.SRGBColorSpace);photo.sheenColor.setRGB(...rgb.map(c=>Math.min(1,c/255*1.25+.03)),T.SRGBColorSpace);texture.needsUpdate=true;paint();}
   };
 }
