@@ -13,6 +13,13 @@ const profiles={
   leg:[[267,131,194,25],[278,128,194,26],[294,129,191,25],[311,131,185,23],[340,133,181,21],[400,136,176,18],[490,137,175,17],[536,139,173,17],[541,142,171,15]]
 };
 
+// Human build for the WebGL studio. The traced sections are ellipses, which leaves the chest flat and
+// lets the shoulders taper to an edge: a real torso is deeper and squarer. Depth is scaled per part and
+// the section is squared off (superellipse), in z only, so the front view keeps the photograph's outline.
+const BUILD={body:[1.24,.6],leg:[1.34,.78],sleeve:[1.3,.8],collar:[1.12,.85]};
+let full=false;
+const section=(part,cs)=>full?BUILD[part][0]*Math.sign(cs)*Math.pow(Math.abs(cs),BUILD[part][1]):cs;
+
 // Tailoring volume added to the WebGL geometry, in frame pixels along z (positive = towards the front).
 // Only depth changes, so the front photograph keeps its exact place on screen.
 const bell=(v,at,width)=>Math.exp(-(((v-at)/width)**2));
@@ -73,7 +80,7 @@ export function garmentGeometry(part,reflected=false,detail=1){
     for(let i=0;i<=segments;i++){
       const a=i*2*Math.PI/segments-Math.PI,cs=Math.cos(a),sn=Math.sin(a);
       const x=center+radius*sn;
-      let z=depth*cs;
+      let z=depth*(detail>1?(full=true,section(part,cs)):(full=false,cs));
       if(detail>1)z+=shape(part,y,x-center,radius,cs);
       if(part==='leg')z+=2.3*Math.exp(-sn*sn/.045)*Math.max(0,cs);
       if(detail>1&&part==='leg')z-=1.5*Math.exp(-sn*sn/.03)*Math.max(0,-cs); // pressed crease down the back of the leg
@@ -146,7 +153,7 @@ function chestDepth(x,y){
   const t=(y-a[0])/(b[0]-a[0]||1);
   const [l,r,d]=[1,2,3].map(i=>a[i]+(b[i]-a[i])*t);
   const cos=Math.sqrt(Math.max(0,1-((2*x-l-r)/(r-l))**2));
-  return cos*(d+2.8*Math.exp(-(((Math.abs(x-191)-(150-y)*.31)/5)**2)));
+  return (full?BUILD.body[0]*Math.pow(cos,BUILD.body[1]):cos)*(d+2.8*Math.exp(-(((Math.abs(x-191)-(150-y)*.31)/5)**2)));
 }
 
 export function tailoredPanel(rows,rolled){
@@ -209,7 +216,7 @@ export const surface={
   cuff(y,turn,mirror){
     const [,l,r,depth]=profileAt('sleeve',y),center=(l+r)/2,radius=(r-l)/2,angle=.55+turn;
     const sn=-Math.cos(angle),cs=-Math.sin(angle);
-    const x=center+radius*sn,z=depth*cs+shape('sleeve',y,x-center,radius,cs);
+    const x=center+radius*sn,z=depth*section('sleeve',cs)+shape('sleeve',y,x-center,radius,cs);
     const normal=new T.Vector3(sn/radius,0,cs/depth).normalize();
     const position=world(mirror?382-x:x,y,z).addScaledVector(normal.clone().setX(mirror?-normal.x:normal.x),.008);
     if(mirror)normal.x=-normal.x;
