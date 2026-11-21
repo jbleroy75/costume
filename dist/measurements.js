@@ -1,14 +1,14 @@
 import {checkMeasurements,describeAlert} from './measure-check.js';
 export const measurements = [
-  ['stature','Stature','Debout, pieds nus, du sol au sommet du crâne.'],
+  ['stature','Taille (hauteur)','Debout, pieds nus, du sol au sommet du crâne.'],
+  ['poids','Poids','Sur une balance, sans chaussures.','kg'],
   ['poitrine','Tour de poitrine','Passez le ruban sous les aisselles, sur la partie la plus forte du buste.'],
   ['taille','Tour de taille','Mesurez autour de la taille naturelle, le ventre relâché.'],
   ['bassin','Tour de bassin','Entourez les hanches à leur point le plus large.'],
   ['epaules','Carrure dos','D’une extrémité de l’épaule à l’autre en suivant le haut du dos.'],
   ['manche','Longueur de manche','Du point d’épaule au poignet, le bras légèrement fléchi.'],
   ['dos','Longueur de dos','De la base de la nuque à la taille naturelle.'],
-  ['entrejambe','Entrejambe','Mesurez le long de la jambe, de l’entrejambe au bas souhaité.'],
-  ['poids','Poids','Facultatif. Sur une balance, sans chaussures : il aide à repérer une mesure mal prise.','kg']
+  ['entrejambe','Entrejambe','Mesurez le long de la jambe, de l’entrejambe au bas souhaité.']
 ];
 export function normalizeMeasurements(input = {}) {
   const result = {};
@@ -59,8 +59,11 @@ export function mountMeasurements(values, onChange) {
     const found = Object.fromEntries(checkMeasurements(current).alerts.map(alert => [alert.key, alert]));
     for (const [key, note] of Object.entries(notes)) {
       const alert = found[key];
-      note.hidden = !alert;
-      note.textContent = alert ? describeAlert(alert) : '';
+      // height and weight anchor the check of every tape reading: ask for them once a reading is entered
+      const filled = k => Number(current[k]) > 0;
+      const wanted = !alert && (key === 'stature' || key === 'poids') && !filled(key) && Object.keys(notes).some(k => k !== 'stature' && k !== 'poids' && filled(k));
+      note.hidden = !alert && !wanted;
+      note.textContent = alert ? describeAlert(alert) : wanted ? 'À renseigner : cette valeur sert à vérifier vos autres mesures.' : '';
       note.dataset.level = alert?.level ?? '';
     }
   };
