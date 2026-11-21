@@ -1,4 +1,5 @@
 User-agent: *
 Disallow: /admin
+Disallow: /commande
 Disallow: /api/
 Sitemap: https://costume.jbleroy.fr/sitemap.xml

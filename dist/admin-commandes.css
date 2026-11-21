@@ -1,0 +1,10 @@
+nav{font-size:15px}#settings{display:flex;flex-wrap:wrap;gap:14px;align-items:end;padding:16px;background:#fff;border:1px solid #d6d2c8;margin-bottom:26px}#settings input{width:260px}
+#orders{display:grid;gap:0;border-top:1px solid #ccc9c0}.order-row{display:grid;grid-template-columns:130px minmax(0,1fr) 110px 130px;gap:12px;align-items:center;width:100%;text-align:left;background:none;color:inherit;border:0;border-bottom:1px solid #ccc9c0;border-radius:0;padding:14px 6px;cursor:pointer}
+.order-row:hover,.order-row[aria-current="true"]{background:#ebe8df}.order-row code{font:600 15px ui-monospace,Menlo,monospace}.badge{display:inline-block;padding:2px 9px;border-radius:99px;background:#dfe6e1;font-size:13px;justify-self:start}.badge[data-status="nouvelle"]{background:#263e34;color:#fff}.badge[data-status="annulee"]{background:#e7d9d5}
+#order{display:block;margin-top:30px;padding:0;border:0}#order h2{font:normal 30px/1.2 Georgia,serif;margin:0 0 4px}#order h3{font-size:13px;letter-spacing:.1em;text-transform:uppercase;color:#5b6159;margin:26px 0 8px}
+.cols{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:22px;align-items:start}.cols>*{min-width:0}dl{margin:0;display:grid;grid-template-columns:auto minmax(0,1fr);gap:4px 14px}dt{color:#5b6159}dd{margin:0;font-weight:600;overflow-wrap:anywhere}
+.alerts{margin:0;padding:10px 14px;border-left:3px solid #a8782a;background:#f6efe2;list-style:none;display:grid;gap:6px}.alerts.ok{border-left-color:#3d6b52;background:#e6efe9}
+.actions{display:flex;flex-wrap:wrap;gap:10px}.actions button,.actions a{font:inherit;padding:10px 14px;border-radius:4px;border:1px solid #263e34;background:#263e34;color:#fff;text-decoration:none;cursor:pointer}.actions .quiet{background:#fff;color:#263e34}
+#sheet-frame{width:100%;height:640px;border:1px solid #ccc9c0;background:#fff;margin-top:14px}#order textarea{width:100%;font:inherit;padding:9px;border:1px solid #bbb8ae;border-radius:4px}
+#order .preview{max-width:200px;border:1px solid #ccc9c0;display:block}
+@media (max-width:640px){.order-row{grid-template-columns:1fr 1fr}#settings input{width:100%}}

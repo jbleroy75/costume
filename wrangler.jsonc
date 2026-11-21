@@ -10,7 +10,12 @@
     "binding": "ASSETS",
     "html_handling": "auto-trailing-slash"
   },
-  "r2_buckets": [{ "binding": "BUCKET", "bucket_name": "atelier-costume-tissus" }]
-  // FABRIC_ADMIN_EMAIL n'est volontairement pas défini : l'en-tête oai-authenticated-user-email
-  // n'est garanti que par l'hébergement ChatGPT ; ici n'importe qui pourrait l'envoyer.
+  "r2_buckets": [{ "binding": "BUCKET", "bucket_name": "atelier-costume-tissus" }],
+  // Administration (/admin, /admin-commandes, /api/admin) : protégée par Cloudflare Access
+  // (application « Atelier – administration »). Le Worker vérifie lui-même la signature du jeton Access ;
+  // ces deux valeurs ne sont pas secrètes (domaine de l'organisation et identifiant de l'application).
+  "vars": {
+    "ACCESS_TEAM": "rapid-morning-e18f.cloudflareaccess.com",
+    "ACCESS_AUD": "4f2fe6dee5c97a8bb925251243b7578287fe0da5d8ef81eb0d1ba83ba5cf1c54"
+  }
 }

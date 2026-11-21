@@ -1,0 +1,8 @@
+<!doctype html><html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow"><title>Commandes · Atelier</title><link rel="stylesheet" href="admin.css"><link rel="stylesheet" href="admin-commandes.css"></head><body><main>
+<header><nav><a href="studio.html">← Simulateur</a> · <a href="admin.html">Import des tissus</a></nav><h1>Commandes</h1></header>
+<p id="status" role="status">Vérification de l’accès…</p>
+<section id="panel" hidden>
+<form id="settings"><label>Nom du fournisseur<input id="supplier-name" maxlength="80" placeholder="Ex. M. Chen"></label><label>E-mail du fournisseur<input id="supplier-email" type="email" maxlength="120" placeholder="commandes@fournisseur.com"></label><button>Enregistrer</button><span id="settings-status" role="status"></span></form>
+<div id="orders"></div><p id="empty" hidden>Aucune commande pour l’instant.</p>
+<article id="order" hidden></article>
+</section></main><script type="module" src="admin-commandes.js"></script></body></html>
