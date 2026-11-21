@@ -1,4 +1,5 @@
 import {hydrateFabricCatalogue} from './imported-fabrics.js';
+import {fabricPatch} from './fabric-patch.js';
 import {loadFabricTile} from './trouser-preview.js';
 import {fabricWeight} from './supplier-fabric-data.js';
 import {mountPreviewViews} from './preview-views.js';
@@ -29,15 +30,17 @@ function syncVolume(){
   $('bust-view').hidden=!visible;$('bust-view').setAttribute('aria-pressed',String(bust));
   studio3d?.show(visible);
 }
-function updateVolume(rgb,state){
+let lastTile=null,swatchCanvas=null;
+function clothSwatch(){try{swatchCanvas=fabricPatch(lastState,lastTile,swatchCanvas||undefined);return swatchCanvas;}catch{return null;}}
+function updateVolume(rgb,state,tile=null){
   lastState=state;
-  lastCloth=rgb;
-  if(studio3d){studio3d.update(rgb,state);return;}
+  lastCloth=rgb;lastTile=tile;
+  if(studio3d){studio3d.update(rgb,state,clothSwatch());return;}
   if(studioLoad)return;
   studioLoad=import('./suit-volume.js').then(({createStudio})=>{
     studio3d=createStudio($('suit-volume'),canvas);
     $('volume-toggle').hidden=false;
-    studio3d.update(lastCloth,lastState);studio3d.bust(bust);studio3d.zoom(zoom);syncVolume();
+    studio3d.update(lastCloth,lastState,clothSwatch());studio3d.bust(bust);studio3d.zoom(zoom);syncVolume();
   }).catch(()=>{volumeEnabled=false;syncVolume();});
 }
 $('volume-toggle').addEventListener('click',()=>{volumeEnabled=!volumeEnabled;syncVolume();});
@@ -90,7 +93,7 @@ async function render() {
     const pixels=renderPixels(source,state,tile);
     context.putImageData(new ImageData(pixels,width,height),0,0);
     const selectedFabric=getSupplierFabric(state.supplierFabric);
-    updateVolume(selectedFabric?.baseRGB||COLORS.find(c=>c.id===state.color).rgb,state);
+    updateVolume(selectedFabric?.baseRGB||COLORS.find(c=>c.id===state.color).rgb,state,tile);
     const cut=getOption('coatFront',state.tailoring.coatFront).label;
     const pockets=getOption('coatPockets',state.tailoring.coatPockets).label;
     const cloth=selectedFabric?selectedFabric.supplier+' '+selectedFabric.reference+' · '+selectedFabric.patternLabel:name(COLORS,state.color)+' · '+name(PATTERNS,state.pattern);
