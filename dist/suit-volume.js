@@ -22,7 +22,11 @@ function shape(part,y,across,radius,cs){
     // Arms hang with a slight forward pitch and the forearm bends forward from the elbow.
     const t=Math.min(1,Math.max(0,(y-63)/200)),forearm=Math.log1p(Math.exp((t-.5)/.06))*.12;
     const elbow=back*bell(y,168,14)*1.6; // a soft fold where the elbow bends
-    return 2.2*t+12*forearm-elbow;
+    return 2.2*t+12*forearm-elbow+cs*3.2*bell(y,100,34); // upper arm fuller front to back than the flat trace
+  }
+  if(part==='collar'){
+    // behind the neck the collar stands proud of the back by the thickness of its fall
+    return -back*2.4*(1-Math.min(1,Math.max(0,(y-(48.5-.0085*across*across))/2.5)));
   }
   if(part==='body'){
     // Back: shoulder blades, suppressed waist, and the skirt falling away to the vents;
@@ -30,7 +34,8 @@ function shape(part,y,across,radius,cs){
     const folds=back>.35?Math.sin((Math.abs(across)-.32*(y-120))/4.2)*bell(y,165,30)*bell(Math.abs(across),28,18)*1.5:0;
     // below the waist the skirt falls in two long soft folds towards the vents
     const fall=back>.3?Math.sin(Math.abs(across)/7.5+.6)*bell(y,246,26)*1.1:0;
-    return -back*(3.2*bell(y,112,24)-3*bell(y,182,22)+1.8*bell(y,262,22))-(folds+fall)*back;
+    const ledge=2.4*(1-Math.min(1,Math.max(0,(y-(48.5-.0085*across*across))/2.5)))*bell(across,0,34);
+    return -back*(3.2*bell(y,112,24)-3*bell(y,182,22)+1.8*bell(y,262,22)+ledge)-(folds+fall)*back;
   }
   if(part==='leg'){
     // Trousers: seat below the jacket, calf, and shallow creases behind the knee.
@@ -81,13 +86,19 @@ export function garmentGeometry(part,reflected=false,detail=1){
         lift=t*t*(12+9*cs); // hem slopes from the instep down to the heel
         z+=3.2*bell(y,512,9)*Math.max(0,cs)+(1.5+3*Math.max(0,cs))*t*t*cs; // the break: one soft fold above the shoe
       }
-      pos.push((x-191)/100,(542-y+lift)/100,z/100);
+      let tuck=0;
+      if(detail>1&&part==='sleeve'&&y<74){
+        // the sleeve head thins into the armhole; its outline, seen from the front, stays the photograph's
+        const k=(1-(y-63)/11)**2;
+        z*=1-.7*k;
+      }
+      pos.push((x+tuck-191)/100,(542-y+lift)/100,z/100);
       uv.push((center+(x-center)*.985)/384,1-y/576);
       surface.push(i/segments,(542-y)/180);
       // Behind the neck the jacket collar rises over the shirt: only its top edge keeps the photograph.
       const t=Math.min(1,Math.max(0,(cs-.2)/.2));
       front.push(cuff||(neck&&(cs>=0||y<34))?1:t*t*(3-2*t));
-      panel.push(part==='body'?1:0);
+      panel.push(part==='body'?1:part==='leg'?2:0);
     }
     // Cloth coordinates in world units (one scale everywhere): arc length measured from the back centre
     // in both directions, so stripes run straight down the back and continue unbroken across the side
@@ -238,7 +249,9 @@ float collarEdge=4.925+0.85*vObject.x*vObject.x;
 float nape=(1.0-vFront)*smoothstep(-0.02,-0.08,vObject.z)*step(abs(vObject.x),0.5);
 float underCollar=nape*step(vObject.y,collarEdge)*smoothstep(0.075,0.0,collarEdge-vObject.y);
 float collarLine=nape*(1.0-smoothstep(0.002,0.007,abs(vObject.y-collarEdge)));
-float behind=vPanel*(1.0-vFront)*smoothstep(-0.02,-0.08,vObject.z);
+float isBody=step(0.5,vPanel)*step(vPanel,1.5),isLeg=step(1.5,vPanel);
+float rear=(1.0-vFront)*smoothstep(-0.02,-0.08,vObject.z);
+float behind=isBody*rear;
 float hem=step(2.62,vObject.y)*(1.0-step(3.16,vObject.y));
 float centre=behind*(1.0-smoothstep(0.003,0.009,abs(vObject.x)))*step(2.62,vObject.y)*step(vObject.y,collarEdge);
 float centreVent=hem*float(vents==1);
@@ -248,7 +261,32 @@ float sides=max(sideSeam*0.7,behind*hem*float(vents>=2)*(1.0-smoothstep(0.003,0.
 float sideLap=behind*hem*float(vents>=2)*smoothstep(0.03,0.0,seamX-abs(vObject.x))*step(abs(vObject.x),seamX)*0.18;
 float strap=behind*float(vents==3)*step(2.86,vObject.y)*(1.0-step(2.92,vObject.y))*(1.0-smoothstep(0.03,0.04,abs(abs(vObject.x)-seamX)));
 diffuseColor.rgb*=1.0-0.3*max(centre*(1.0+0.6*centreVent),sides*1.3)-lap-sideLap;
-diffuseColor.rgb*=1.0-0.34*underCollar-0.3*collarLine;
+diffuseColor.rgb*=1.0-0.46*underCollar-0.3*collarLine;
+// the collar itself catches the light along its fold
+diffuseColor.rgb*=1.0+0.10*nape*step(collarEdge,vObject.y)*smoothstep(0.16,0.0,vObject.y-collarEdge);
+// modelling of the back as a photograph would show it: shoulder blades lit, spine and waist in half-shade,
+// the seat catching light again, and the hollow under each arm
+float ax=abs(vObject.x);
+float blades=exp(-pow((ax-0.3)/0.2,2.0))*exp(-pow((vObject.y-4.35)/0.3,2.0));
+float spine=exp(-pow(vObject.x/0.1,2.0))*exp(-pow((vObject.y-4.2)/0.55,2.0));
+float waist=exp(-pow((vObject.y-3.65)/0.32,2.0))*(0.55+0.45*exp(-pow((ax-0.36)/0.2,2.0)));
+float seat=exp(-pow((vObject.y-2.98)/0.24,2.0))*exp(-pow(vObject.x/0.5,2.0));
+float underarm=smoothstep(0.46,0.66,ax)*exp(-pow((vObject.y-4.05)/0.55,2.0));
+// two soft drape folds from each blade to the waist
+float drape=sin((ax-0.3*(vObject.y-3.6))*46.0)*exp(-pow((vObject.y-3.95)/0.3,2.0))*exp(-pow((ax-0.3)/0.16,2.0));
+diffuseColor.rgb*=1.0+behind*(0.11*blades-0.07*spine-0.12*waist+0.07*seat-0.2*underarm+0.045*drape);
+// trousers from behind: jetted hip pockets with their button, seat seam
+float legRear=isLeg*rear;
+float pocket=legRear*(1.0-smoothstep(0.003,0.007,abs(vObject.y-2.4)))*(1.0-smoothstep(0.1,0.108,abs(ax-0.31)));
+float pocketLip=legRear*smoothstep(0.03,0.0,2.4-vObject.y)*step(vObject.y,2.4)*(1.0-smoothstep(0.1,0.108,abs(ax-0.31)));
+float pocketButton=legRear*(1.0-smoothstep(0.011,0.015,length(vec2(ax-0.31,vObject.y-2.365))));
+diffuseColor.rgb*=1.0-0.36*pocket-0.09*pocketLip-0.4*pocketButton;
+// wool: a fine twill and a faint mottling on the tiled cloth, fading out before they could shimmer
+float cover=1.0-vFront;
+float twill=(vCloth.x*1.92+vObject.y)*520.0;
+float fine=1.0-smoothstep(0.6,1.6,fwidth(twill));
+float mottle=sin(vCloth.x*61.0+sin(vObject.y*37.0)*1.7)*sin(vObject.y*53.0+sin(vCloth.x*29.0)*1.3);
+diffuseColor.rgb*=1.0+cover*(0.055*fine*sin(twill)+0.022*mottle);
 diffuseColor.rgb*=1.0-0.16*strap+0.10*strap*smoothstep(2.88,2.9,vObject.y);`;
 
 export function createStudio(host,original){
