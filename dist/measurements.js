@@ -1,4 +1,5 @@
 import {checkMeasurements,describeAlert} from './measure-check.js';
+import {mountAnalysis} from './measure-analysis.js';
 export const measurements = [
   ['stature','Taille (hauteur)','Debout, pieds nus, du sol au sommet du crâne.'],
   ['poids','Poids','Sur une balance, sans chaussures.','kg'],
@@ -55,7 +56,9 @@ export function mountMeasurements(values, onChange) {
   const openPhoto = createPhotoDialog();
   // Plausibility check: a note under a value that does not fit the others. It never blocks the order.
   const current = {...values}, notes = {};
+  const analyse = mountAnalysis(form, Object.fromEntries(measurements.map(([key, label]) => [key, label])));
   const review = () => {
+    analyse(current);
     const found = Object.fromEntries(checkMeasurements(current).alerts.map(alert => [alert.key, alert]));
     for (const [key, note] of Object.entries(notes)) {
       const alert = found[key];
