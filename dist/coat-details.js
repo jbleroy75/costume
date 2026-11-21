@@ -14,6 +14,13 @@ const layouts = {
   'croisee-4-sur-1': [[220,215],[293,215],[233,261],[284,261]],
   'croisee-6-sur-1': [[215,194],[295,194],[224,230],[291,230],[234,272],[284,272]]
 };
+// Button centres of the selected front, in the 512 × 768 reference frame (the 3D studio places real
+// buttons on them, exactly over the buttons painted into the front render).
+export function buttonPositions(config){
+  const front=config?.tailoring?.coatFront;
+  if(layouts[front])return layouts[front].map(p=>[...p]);
+  return (String(front||'').startsWith('croisee')||config?.closure==='double'?DOUBLE:SINGLE).map(p=>[...p]);
+}
 const clamp = (value, min, max) => Math.max(min,Math.min(max,value));
 const same = ([x,y],[u,v]) => x===u && y===v;
 
