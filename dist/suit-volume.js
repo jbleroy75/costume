@@ -1,5 +1,6 @@
 import {rasterSuit} from './suit-raster.js';
 import {PATCH_WIDTH,PATCH_HEIGHT} from './fabric-patch.js';
+import {createButtons} from './buttons-3d.js';
 import * as T from './vendor/three.module.min.js';
 
 // Cross sections measured in the shared 384 × 576 studio frame.
@@ -58,7 +59,8 @@ export function garmentGeometry(part,reflected=false,detail=1){
     const center=reflected?382-(l+r)/2:(l+r)/2,radius=(r-l)/2;
     // The photograph is reliable on the front; the sides and back receive tiled cloth instead.
     // Neck and shirt cuffs read the same all round, so they keep the photograph everywhere.
-    const neck=part==='collar'&&y<44,cuff=part==='sleeve'&&y>=252;
+    // Shirt cuff only: the cuff buttons painted just above it are replaced by real buttons in 3D.
+    const neck=part==='collar'&&y<44,cuff=part==='sleeve'&&y>=257;
     const ringStart=pos.length/3;
     for(let i=0;i<=segments;i++){
       const a=i*2*Math.PI/segments-Math.PI,cs=Math.cos(a),sn=Math.sin(a);
@@ -131,7 +133,7 @@ export function tailoredPanel(rows,rolled){
   function vertex(y,start,end,j){
     const t=j/columns,x=start+(end-start)*t;
     const taper=Math.min(1,Math.abs(end-start)/12);
-    const lift=rolled?(.75+5.4*Math.sin(Math.PI*t*.78)+1.4*t)*taper:.85+t*1.35;
+    const lift=rolled?(.75+5.4*Math.sin(Math.PI*t*.78)+1.4*t)*taper:.3+t*.55;
     const z=chestDepth(x,y)+lift+.4;
     positions.push((x-191)/100,(542-y)/100,z/100);
     uv.push(x/384,1-y/576);
@@ -150,9 +152,16 @@ export function tailoredPanel(rows,rolled){
   const topCount=indices.length;
   for(let i=0;i<lines.length;i++){
     const n=i*(columns+1)+columns,k=positions.length/3;
-    positions.push(positions[3*n],positions[3*n+1],positions[3*n+2]-.016);
+    positions.push(positions[3*n],positions[3*n+1],positions[3*n+2]-.045);
     uv.push(uv[n*2],uv[n*2+1]);
     if(i){const prev=n-columns-1;triangle(prev,k-1,n);triangle(n,k-1,k);}
+  }
+  // The other long edge too, so no light shows between a raised panel and the chest in profile.
+  for(let i=0;i<lines.length;i++){
+    const n=i*(columns+1),k=positions.length/3;
+    positions.push(positions[3*n],positions[3*n+1],positions[3*n+2]-.045);
+    uv.push(uv[n*2],uv[n*2+1]);
+    if(i){const prev=n-columns-1;triangle(prev,n,k-1);triangle(n,k,k-1);}
   }
   const geo=new T.BufferGeometry();geo.userData.raisedFacing=true;geo.setIndex(indices);geo.addGroup(0,topCount,0);geo.addGroup(topCount,indices.length-topCount,1);
   geo.setAttribute('position',new T.Float32BufferAttribute(positions,3));
@@ -162,6 +171,30 @@ export function tailoredPanel(rows,rolled){
   geo.setAttribute('panel',new T.Float32BufferAttribute(new Float32Array(positions.length/3),1));
   geo.computeVertexNormals();return geo;
 }
+
+// Points on the garment surface for trims, in world units, with the outward normal.
+function profileAt(part,y){
+  const rows=profiles[part],n=Math.max(1,rows.findIndex(r=>r[0]>=y)),a=rows[n-1],b=rows[n]||a;
+  const t=Math.min(1,Math.max(0,(y-a[0])/((b[0]-a[0])||1)));
+  return a.map((v,i)=>v+(b[i]-v)*t);
+}
+const world=(x,y,z)=>new T.Vector3((x-191)/100,(542-y)/100,z/100);
+export const surface={
+  front(x,y,raised){
+    const lift=raised?2.6:1.6,d=(dx,dy)=>chestDepth(x+dx,y+dy);
+    const normal=new T.Vector3(-(d(1,0)-d(-1,0))/2,(d(0,1)-d(0,-1))/2,1).normalize();
+    return {position:world(x,y,d(0,0)+lift).addScaledVector(normal,0),normal};
+  },
+  cuff(y,turn,mirror){
+    const [,l,r,depth]=profileAt('sleeve',y),center=(l+r)/2,radius=(r-l)/2,angle=.55+turn;
+    const sn=-Math.cos(angle),cs=-Math.sin(angle);
+    const x=center+radius*sn,z=depth*cs+shape('sleeve',y,x-center,radius,cs);
+    const normal=new T.Vector3(sn/radius,0,cs/depth).normalize();
+    const position=world(mirror?382-x:x,y,z).addScaledVector(normal.clone().setX(mirror?-normal.x:normal.x),.008);
+    if(mirror)normal.x=-normal.x;
+    return {position,normal};
+  }
+};
 
 export function doubleFrontDetails(){
   const overlap=[[165,209,171],[188,212,170],[220,214,170],[250,218,170],[276,215,171]];
@@ -255,6 +288,28 @@ export function createStudio(host,original){
   const contact=new T.Mesh(new T.PlaneGeometry(2.1,.9),new T.MeshBasicMaterial({map:gradientTexture([[0,'rgba(30,26,22,.5)'],[.35,'rgba(30,26,22,.24)'],[.7,'rgba(30,26,22,.07)'],[1,'rgba(30,26,22,0)']],256),transparent:true,depthWrite:false}));
   contact.rotation.x=-Math.PI/2;contact.position.set(.03,-.012,.02);scene.add(contact);
 
+  // Trims are snapped onto the actual meshes (ray cast with the garment facing the camera).
+  const ray=new T.Raycaster(),sleeves=garment.children.slice(3,5);
+  function snap(origin,direction,targets){
+    const turn=garment.rotation.y;garment.rotation.y=0;garment.updateMatrixWorld(true);
+    ray.set(origin,direction.clone().normalize());
+    const hit=ray.intersectObjects(targets.filter(m=>m.visible),false)[0];
+    garment.rotation.y=turn;garment.updateMatrixWorld(true);
+    if(!hit)return null;
+    const normal=hit.face.normal.clone();if(normal.dot(direction)>0)normal.negate();
+    return {position:hit.point.clone().addScaledVector(normal,.002),normal};
+  }
+  const attach={
+    front(x,y,raised){
+      const guess=surface.front(x,y,raised);
+      return snap(new T.Vector3(guess.position.x,guess.position.y,3),new T.Vector3(0,0,-1),garment.children)||guess;
+    },
+    cuff(y,turn,mirror){
+      const guess=surface.cuff(y,turn,mirror);
+      return snap(guess.position.clone().addScaledVector(guess.normal,.4),guess.normal.clone().negate(),sleeves)||guess;
+    }
+  };
+  const buttons=renderer?createButtons(scene,attach):null;
   const LIMIT=renderer&&!reduced?Infinity:.62,REST=.11,TURN=2*Math.PI;
   const view={yaw:REST,half:2.83,center:2.55},goal={...view};
   let bust=false,zoom=1,active=false,drag=null,velocity=0,frame=0,last=0,introduced=false,lastMove=0,intro=null;
@@ -275,7 +330,7 @@ export function createStudio(host,original){
     const half=Math.max(view.half,1.23*h/w)/zoom,distance=half/Math.tan(fov*Math.PI/360);
     camera.aspect=w/h;camera.updateProjectionMatrix();
     camera.position.set(0,view.center+.04*distance,distance);camera.lookAt(0,view.center,0);
-    garment.rotation.y=view.yaw;renderer.render(scene,camera);
+    garment.rotation.y=view.yaw;if(buttons)buttons.group.rotation.y=view.yaw;renderer.render(scene,camera);
   }
   // Eased camera and inertia; frames are only drawn while something moves.
   function tick(now){
@@ -326,6 +381,6 @@ export function createStudio(host,original){
     zoom(v){zoom=v;paint();},
     update(color,state,swatch){
       if(swatch){cloth.image=swatch;cloth.needsUpdate=true;}
-      vents.value={'sans-fente':0,'fente-centrale':1,'deux-fentes-laterales':2,'fentes-laterales-avec-patte':3}[state?.tailoring?.coatVents]??2;for(const mesh of details)mesh.visible=state?.closure==='double'&&state.tailoring?.coatLapel==='en-pointe';rgb=color;if(software)cpuPixels=original.getContext('2d').getImageData(0,0,original.width,original.height).data;side.color.setRGB(...rgb.map(c=>c/255),T.SRGBColorSpace);photo.sheenColor.setRGB(...rgb.map(c=>Math.min(1,c/255*1.25+.03)),T.SRGBColorSpace);texture.needsUpdate=true;paint();}
+      vents.value={'sans-fente':0,'fente-centrale':1,'deux-fentes-laterales':2,'fentes-laterales-avec-patte':3}[state?.tailoring?.coatVents]??2;for(const mesh of details)mesh.visible=state?.closure==='double'&&state.tailoring?.coatLapel==='en-pointe';buttons?.update(state);rgb=color;if(software)cpuPixels=original.getContext('2d').getImageData(0,0,original.width,original.height).data;side.color.setRGB(...rgb.map(c=>c/255),T.SRGBColorSpace);photo.sheenColor.setRGB(...rgb.map(c=>Math.min(1,c/255*1.25+.03)),T.SRGBColorSpace);texture.needsUpdate=true;paint();}
   };
 }
