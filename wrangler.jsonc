@@ -1,0 +1,16 @@
+{
+  // Atelier : site statique (dist) + Worker pour /api (catalogue de tissus importés dans R2).
+  "name": "atelier-costume",
+  "main": "worker/index.js",
+  "compatibility_date": "2026-10-01",
+  "workers_dev": true,
+  "routes": [{ "pattern": "costume.jbleroy.fr", "custom_domain": true }],
+  "assets": {
+    "directory": "./dist",
+    "binding": "ASSETS",
+    "html_handling": "auto-trailing-slash"
+  },
+  "r2_buckets": [{ "binding": "BUCKET", "bucket_name": "atelier-costume-tissus" }]
+  // FABRIC_ADMIN_EMAIL n'est volontairement pas défini : l'en-tête oai-authenticated-user-email
+  // n'est garanti que par l'hébergement ChatGPT ; ici n'importe qui pourrait l'envoyer.
+}

@@ -49,3 +49,6 @@ Rayures affinées avec couverture douce et grain irrégulier, contraste fourniss
 
 ### Vue 3D — mise en scène studio (21/11/2026)
 Rendu WebGL de `suit-volume.js` : caméra à longue focale, fond studio dégradé, ombre de contact sous les pieds, deux lumières de contour qui détachent la silhouette, léger lustre laineux teinté par le tissu (les couleurs restent fidèles), géométrie deux fois plus fine. Animations : quart de tour d'accueil à la première apparition, inertie après un glisser, transitions douces vers le buste ; rien de tout cela avec `prefers-reduced-motion`. Le rendu logiciel sans WebGL (`suit-raster.js`) et les géométries des tests sont inchangés.
+
+## Hébergement
+Servi par Cloudflare Workers sur https://costume.jbleroy.fr (`wrangler.jsonc`) : `dist/` en ressources statiques, `worker/index.js` pour `/api`, bucket R2 `atelier-costume-tissus`. Chaque push sur `main` touchant `dist/`, `worker/` ou `wrangler.jsonc` redéploie (`.github/workflows/deploy-cloudflare.yml`). L'import de tissus `/admin` reste fermé : il reposait sur l'authentification de l'hébergement ChatGPT.
