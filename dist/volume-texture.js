@@ -47,7 +47,10 @@ export function reliefCanvas(source){
   const ctx=canvas.getContext('2d'),img=ctx.createImageData(width,height);
   for(let n=0;n<light.length;n++){
     const v=128+Math.max(-110,Math.min(110,(light[n]-blur[n])*2.2))*Math.min(1,mask[n]*1.5+.25);
-    img.data[4*n]=img.data[4*n+1]=img.data[4*n+2]=v;img.data[4*n+3]=255;
+    img.data[4*n]=img.data[4*n+1]=v;img.data[4*n+3]=255;
+    // blue channel: the studio backdrop of the photograph (bright, outside the cloth), so the 3D view can
+    // dress the parts of a leg or a sleeve that overhang the photographed outline instead of showing it
+    img.data[4*n+2]=mask[n]<.08&&source.data[4*n]+source.data[4*n+1]+source.data[4*n+2]>450?255:0;
   }
   ctx.putImageData(img,0,0);reliefs.set(source,canvas);return canvas;
 }

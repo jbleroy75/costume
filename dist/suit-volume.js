@@ -13,6 +13,13 @@ const profiles={
   leg:[[267,131,194,25],[278,128,194,26],[294,129,191,25],[311,131,185,23],[340,133,181,21],[400,136,176,18],[490,137,175,17],[536,139,173,17],[541,142,171,15]]
 };
 
+// Human build for the WebGL studio. The traced sections are ellipses, which leaves the chest flat and
+// lets the shoulders taper to an edge: a real torso is deeper and squarer. Depth is scaled per part and
+// the section is squared off (superellipse), in z only, so the front view keeps the photograph's outline.
+const BUILD={body:[1.24,.6],leg:[1.34,.78],sleeve:[1.3,.8],collar:[1.12,.85]};
+let full=false;
+const section=(part,cs)=>full?BUILD[part][0]*Math.sign(cs)*Math.pow(Math.abs(cs),BUILD[part][1]):cs;
+
 // Tailoring volume added to the WebGL geometry, in frame pixels along z (positive = towards the front).
 // Only depth changes, so the front photograph keeps its exact place on screen.
 const bell=(v,at,width)=>Math.exp(-(((v-at)/width)**2));
@@ -22,7 +29,11 @@ function shape(part,y,across,radius,cs){
     // Arms hang with a slight forward pitch and the forearm bends forward from the elbow.
     const t=Math.min(1,Math.max(0,(y-63)/200)),forearm=Math.log1p(Math.exp((t-.5)/.06))*.12;
     const elbow=back*bell(y,168,14)*1.6; // a soft fold where the elbow bends
-    return 2.2*t+12*forearm-elbow;
+    return 2.2*t+12*forearm-elbow+cs*3.2*bell(y,100,34); // upper arm fuller front to back than the flat trace
+  }
+  if(part==='collar'){
+    // behind the neck the collar stands proud of the back by the thickness of its fall
+    return -back*2.4*(1-Math.min(1,Math.max(0,(y-(48.5-.0085*across*across))/2.5)));
   }
   if(part==='body'){
     // Back: shoulder blades, suppressed waist, and the skirt falling away to the vents;
@@ -30,7 +41,8 @@ function shape(part,y,across,radius,cs){
     const folds=back>.35?Math.sin((Math.abs(across)-.32*(y-120))/4.2)*bell(y,165,30)*bell(Math.abs(across),28,18)*1.5:0;
     // below the waist the skirt falls in two long soft folds towards the vents
     const fall=back>.3?Math.sin(Math.abs(across)/7.5+.6)*bell(y,246,26)*1.1:0;
-    return -back*(3.2*bell(y,112,24)-3*bell(y,182,22)+1.8*bell(y,262,22))-(folds+fall)*back;
+    const ledge=2.4*(1-Math.min(1,Math.max(0,(y-(48.5-.0085*across*across))/2.5)))*bell(across,0,34);
+    return -back*(3.2*bell(y,112,24)-3*bell(y,182,22)+1.8*bell(y,262,22)+ledge)-(folds+fall)*back;
   }
   if(part==='leg'){
     // Trousers: seat below the jacket, calf, and shallow creases behind the knee.
@@ -61,14 +73,14 @@ export function garmentGeometry(part,reflected=false,detail=1){
   for(const [y,l,r,depth] of rings){
     const center=reflected?382-(l+r)/2:(l+r)/2,radius=(r-l)/2;
     // The photograph is reliable on the front; the sides and back receive tiled cloth instead.
-    // Neck and shirt cuffs read the same all round, so they keep the photograph everywhere.
-    // Shirt cuff only: the cuff buttons painted just above it are replaced by real buttons in 3D.
+    // The neck reads the same all round, so it keeps the photograph everywhere. Shirt cuffs are flagged
+    // (panel 3): away from the front they are painted as plain white cotton by the shader.
     const neck=part==='collar'&&y<44,cuff=part==='sleeve'&&y>=257;
     const ringStart=pos.length/3;
     for(let i=0;i<=segments;i++){
       const a=i*2*Math.PI/segments-Math.PI,cs=Math.cos(a),sn=Math.sin(a);
       const x=center+radius*sn;
-      let z=depth*cs;
+      let z=depth*(detail>1?(full=true,section(part,cs)):(full=false,cs));
       if(detail>1)z+=shape(part,y,x-center,radius,cs);
       if(part==='leg')z+=2.3*Math.exp(-sn*sn/.045)*Math.max(0,cs);
       if(detail>1&&part==='leg')z-=1.5*Math.exp(-sn*sn/.03)*Math.max(0,-cs); // pressed crease down the back of the leg
@@ -81,13 +93,19 @@ export function garmentGeometry(part,reflected=false,detail=1){
         lift=t*t*(12+9*cs); // hem slopes from the instep down to the heel
         z+=3.2*bell(y,512,9)*Math.max(0,cs)+(1.5+3*Math.max(0,cs))*t*t*cs; // the break: one soft fold above the shoe
       }
-      pos.push((x-191)/100,(542-y+lift)/100,z/100);
+      let tuck=0;
+      if(detail>1&&part==='sleeve'&&y<74){
+        // the sleeve head thins into the armhole; its outline, seen from the front, stays the photograph's
+        const k=(1-(y-63)/11)**2;
+        z*=1-.7*k;
+      }
+      pos.push((x+tuck-191)/100,(542-y+lift)/100,z/100);
       uv.push((center+(x-center)*.985)/384,1-y/576);
       surface.push(i/segments,(542-y)/180);
       // Behind the neck the jacket collar rises over the shirt: only its top edge keeps the photograph.
       const t=Math.min(1,Math.max(0,(cs-.2)/.2));
-      front.push(cuff||(neck&&(cs>=0||y<34))?1:t*t*(3-2*t));
-      panel.push(part==='body'?1:0);
+      front.push(neck&&(cs>=0||y<34)?1:t*t*(3-2*t));
+      panel.push(part==='body'?1:part==='leg'?2:cuff?4:part==='sleeve'?3:0);
     }
     // Cloth coordinates in world units (one scale everywhere): arc length measured from the back centre
     // in both directions, so stripes run straight down the back and continue unbroken across the side
@@ -135,7 +153,7 @@ function chestDepth(x,y){
   const t=(y-a[0])/(b[0]-a[0]||1);
   const [l,r,d]=[1,2,3].map(i=>a[i]+(b[i]-a[i])*t);
   const cos=Math.sqrt(Math.max(0,1-((2*x-l-r)/(r-l))**2));
-  return cos*(d+2.8*Math.exp(-(((Math.abs(x-191)-(150-y)*.31)/5)**2)));
+  return (full?BUILD.body[0]*Math.pow(cos,BUILD.body[1]):cos)*(d+2.8*Math.exp(-(((Math.abs(x-191)-(150-y)*.31)/5)**2)));
 }
 
 export function tailoredPanel(rows,rolled){
@@ -198,7 +216,7 @@ export const surface={
   cuff(y,turn,mirror){
     const [,l,r,depth]=profileAt('sleeve',y),center=(l+r)/2,radius=(r-l)/2,angle=.55+turn;
     const sn=-Math.cos(angle),cs=-Math.sin(angle);
-    const x=center+radius*sn,z=depth*cs+shape('sleeve',y,x-center,radius,cs);
+    const x=center+radius*sn,z=depth*section('sleeve',cs)+shape('sleeve',y,x-center,radius,cs);
     const normal=new T.Vector3(sn/radius,0,cs/depth).normalize();
     const position=world(mirror?382-x:x,y,z).addScaledVector(normal.clone().setX(mirror?-normal.x:normal.x),.008);
     if(mirror)normal.x=-normal.x;
@@ -230,7 +248,16 @@ function gradientTexture(stops,size=512,grain=0){
 // (object space: x across, y up, z < 0 behind). Seams are a pressed line with a soft shadow beside it.
 const BACK_SEAMS=`vec4 photoTexel=texture2D(map,vMapUv);
 vec4 clothTexel=texture2D(clothMap,vCloth);
-diffuseColor*=mix(clothTexel,photoTexel,vFront);
+// shirt cuffs: clean white cotton all round instead of the wrapped photograph
+float cuffness=smoothstep(3.5,4.0,vPanel);
+clothTexel=mix(clothTexel,vec4(0.9,0.9,0.89,1.0),cuffness);
+// where a leg or a sleeve overhangs the photographed outline, the photograph shows its backdrop:
+// those parts are dressed with the cloth (or the cuff) like the sides
+float shown=vFront;
+#ifdef USE_BUMPMAP
+shown*=1.0-step(1.5,vPanel)*smoothstep(0.3,0.7,texture2D(bumpMap,vBumpMapUv).b);
+#endif
+diffuseColor*=mix(clothTexel,photoTexel,shown);
 // side-back seams curve in at the waist and out to the armholes; the side vents open at their foot
 float seamX=0.47-0.07*exp(-pow((vObject.y-3.7)/0.45,2.0))+0.13*smoothstep(3.9,4.55,vObject.y);
 // collar: its fall edge dips at the centre back and rises towards the shoulders
@@ -238,7 +265,9 @@ float collarEdge=4.925+0.85*vObject.x*vObject.x;
 float nape=(1.0-vFront)*smoothstep(-0.02,-0.08,vObject.z)*step(abs(vObject.x),0.5);
 float underCollar=nape*step(vObject.y,collarEdge)*smoothstep(0.075,0.0,collarEdge-vObject.y);
 float collarLine=nape*(1.0-smoothstep(0.002,0.007,abs(vObject.y-collarEdge)));
-float behind=vPanel*(1.0-vFront)*smoothstep(-0.02,-0.08,vObject.z);
+float isBody=step(0.5,vPanel)*step(vPanel,1.5),isLeg=step(1.5,vPanel)*step(vPanel,2.5);
+float rear=(1.0-vFront)*smoothstep(-0.02,-0.08,vObject.z);
+float behind=isBody*rear;
 float hem=step(2.62,vObject.y)*(1.0-step(3.16,vObject.y));
 float centre=behind*(1.0-smoothstep(0.003,0.009,abs(vObject.x)))*step(2.62,vObject.y)*step(vObject.y,collarEdge);
 float centreVent=hem*float(vents==1);
@@ -248,7 +277,32 @@ float sides=max(sideSeam*0.7,behind*hem*float(vents>=2)*(1.0-smoothstep(0.003,0.
 float sideLap=behind*hem*float(vents>=2)*smoothstep(0.03,0.0,seamX-abs(vObject.x))*step(abs(vObject.x),seamX)*0.18;
 float strap=behind*float(vents==3)*step(2.86,vObject.y)*(1.0-step(2.92,vObject.y))*(1.0-smoothstep(0.03,0.04,abs(abs(vObject.x)-seamX)));
 diffuseColor.rgb*=1.0-0.3*max(centre*(1.0+0.6*centreVent),sides*1.3)-lap-sideLap;
-diffuseColor.rgb*=1.0-0.34*underCollar-0.3*collarLine;
+diffuseColor.rgb*=1.0-0.46*underCollar-0.3*collarLine;
+// the collar itself catches the light along its fold
+diffuseColor.rgb*=1.0+0.10*nape*step(collarEdge,vObject.y)*smoothstep(0.16,0.0,vObject.y-collarEdge);
+// modelling of the back as a photograph would show it: shoulder blades lit, spine and waist in half-shade,
+// the seat catching light again, and the hollow under each arm
+float ax=abs(vObject.x);
+float blades=exp(-pow((ax-0.3)/0.2,2.0))*exp(-pow((vObject.y-4.35)/0.3,2.0));
+float spine=exp(-pow(vObject.x/0.1,2.0))*exp(-pow((vObject.y-4.2)/0.55,2.0));
+float waist=exp(-pow((vObject.y-3.65)/0.32,2.0))*(0.55+0.45*exp(-pow((ax-0.36)/0.2,2.0)));
+float seat=exp(-pow((vObject.y-2.98)/0.24,2.0))*exp(-pow(vObject.x/0.5,2.0));
+float underarm=smoothstep(0.46,0.66,ax)*exp(-pow((vObject.y-4.05)/0.55,2.0));
+// two soft drape folds from each blade to the waist
+float drape=sin((ax-0.3*(vObject.y-3.6))*46.0)*exp(-pow((vObject.y-3.95)/0.3,2.0))*exp(-pow((ax-0.3)/0.16,2.0));
+diffuseColor.rgb*=1.0+behind*(0.11*blades-0.07*spine-0.12*waist+0.07*seat-0.2*underarm+0.045*drape);
+// trousers from behind: jetted hip pockets with their button, seat seam
+float legRear=isLeg*rear;
+float pocket=legRear*(1.0-smoothstep(0.003,0.007,abs(vObject.y-2.4)))*(1.0-smoothstep(0.1,0.108,abs(ax-0.31)));
+float pocketLip=legRear*smoothstep(0.03,0.0,2.4-vObject.y)*step(vObject.y,2.4)*(1.0-smoothstep(0.1,0.108,abs(ax-0.31)));
+float pocketButton=legRear*(1.0-smoothstep(0.011,0.015,length(vec2(ax-0.31,vObject.y-2.365))));
+diffuseColor.rgb*=1.0-0.36*pocket-0.09*pocketLip-0.4*pocketButton;
+// wool: a fine twill and a faint mottling on the tiled cloth, fading out before they could shimmer
+float cover=(1.0-shown)*(1.0-cuffness);
+float twill=(vCloth.x*1.92+vObject.y)*520.0;
+float fine=1.0-smoothstep(0.6,1.6,fwidth(twill));
+float mottle=sin(vCloth.x*61.0+sin(vObject.y*37.0)*1.7)*sin(vObject.y*53.0+sin(vCloth.x*29.0)*1.3);
+diffuseColor.rgb*=1.0+cover*(0.055*fine*sin(twill)+0.022*mottle);
 diffuseColor.rgb*=1.0-0.16*strap+0.10*strap*smoothstep(2.88,2.9,vObject.y);`;
 
 export function createStudio(host,original){
@@ -282,7 +336,7 @@ export function createStudio(host,original){
       .replace('#include <map_fragment>',BACK_SEAMS)
       // the photograph already carries its own studio lighting: keep most of it as shot, so the navy stays
       // deep and the shirt white; the moving lights only model the volume on top
-      .replace('#include <opaque_fragment>','outgoingLight=mix(outgoingLight,diffuseColor.rgb*mix(0.8,1.04,vFront),mix(0.5,0.62,vFront));\n#include <opaque_fragment>')
+      .replace('#include <opaque_fragment>','outgoingLight=mix(outgoingLight,diffuseColor.rgb*mix(0.8,1.04,shown),mix(0.5,0.62,shown));\n#include <opaque_fragment>')
       // relief from the photograph only where the photograph is shown
       .replace('#include <bumpmap_pars_fragment>',T.ShaderChunk.bumpmap_pars_fragment.replaceAll('bumpScale *','bumpScale * vFront *'));
   };
