@@ -28,10 +28,10 @@ function finish(state){
   return {rgb,metal:own.id==='silver',nacre:false};
 }
 
-export function createButtons(scene,surface){
+export function createButtons(scene,surface,reflections=null){
   const group=new T.Group();scene.add(group);
   const geometry=buttonGeometry();
-  const material=new T.MeshPhysicalMaterial({roughness:.32,clearcoat:.9,clearcoatRoughness:.18});
+  const material=new T.MeshPhysicalMaterial({roughness:.32,clearcoat:.9,clearcoatRoughness:.18,envMap:reflections,envMapIntensity:.6});
   const holes=new T.MeshStandardMaterial({color:0x140f0b,roughness:.9});
   let signature='';
   function add(position,normal,radius){
@@ -59,7 +59,11 @@ export function createButtons(scene,surface){
       group.clear();
       // Front: reference frame 512 × 768 → studio frame 384 × 576 (× 0.75).
       const raised=state?.closure==='double'&&tailoring.coatLapel==='en-pointe';
-      for(const [x,y] of buttonPositions(state)){
+      // Single-breasted buttons sit on one vertical line (the generated master photo drifts ~2 cm
+      // towards the edge on the lowest one); painted buttons are removed from the 3D texture.
+      const layout=buttonPositions(state);
+      if(state?.closure!=='double'){const xs=layout.map(p=>p[0]).sort((a,b)=>a-b),mid=xs[Math.floor(xs.length/2)];for(const p of layout)p[0]=Math.max(mid,p[0]);}
+      for(const [x,y] of layout){
         const at=surface.front(x*.75,y*.75,raised);
         add(at.position,at.normal,.034);
       }
