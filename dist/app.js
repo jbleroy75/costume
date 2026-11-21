@@ -1,5 +1,6 @@
 import {hydrateFabricCatalogue} from './imported-fabrics.js';
 import {fabricPatch} from './fabric-patch.js';
+import {volumePixels,reliefCanvas} from './volume-texture.js';
 import {loadFabricTile} from './trouser-preview.js';
 import {fabricWeight} from './supplier-fabric-data.js';
 import {mountPreviewViews} from './preview-views.js';
@@ -30,17 +31,18 @@ function syncVolume(){
   $('bust-view').hidden=!visible;$('bust-view').setAttribute('aria-pressed',String(bust));
   studio3d?.show(visible);
 }
-let lastTile=null,swatchCanvas=null;
+let lastTile=null,swatchCanvas=null,lastRelief=null;
+const volumeCanvas=document.createElement('canvas');volumeCanvas.width=768;volumeCanvas.height=1152;
 function clothSwatch(){try{swatchCanvas=fabricPatch(lastState,lastTile,swatchCanvas||undefined);return swatchCanvas;}catch{return null;}}
-function updateVolume(rgb,state,tile=null){
+function updateVolume(rgb,state,tile=null,relief=null){
   lastState=state;
-  lastCloth=rgb;lastTile=tile;
-  if(studio3d){studio3d.update(rgb,state,clothSwatch());return;}
+  lastCloth=rgb;lastTile=tile;lastRelief=relief;
+  if(studio3d){studio3d.update(rgb,state,clothSwatch(),relief);return;}
   if(studioLoad)return;
   studioLoad=import('./suit-volume.js').then(({createStudio})=>{
-    studio3d=createStudio($('suit-volume'),canvas);
+    studio3d=createStudio($('suit-volume'),volumeCanvas);
     $('volume-toggle').hidden=false;
-    studio3d.update(lastCloth,lastState,clothSwatch());studio3d.bust(bust);studio3d.zoom(zoom);syncVolume();
+    studio3d.update(lastCloth,lastState,clothSwatch(),lastRelief);studio3d.bust(bust);studio3d.zoom(zoom);syncVolume();
   }).catch(()=>{volumeEnabled=false;syncVolume();});
 }
 $('volume-toggle').addEventListener('click',()=>{volumeEnabled=!volumeEnabled;syncVolume();});
@@ -92,8 +94,11 @@ async function render() {
     if(ticket!==renderTicket)return;
     const pixels=renderPixels(source,state,tile);
     context.putImageData(new ImageData(pixels,width,height),0,0);
+    let relief=null;
+    try{volumeCanvas.getContext('2d').putImageData(new ImageData(volumePixels(pixels,source,state),width,height),0,0);relief=reliefCanvas(source);}
+    catch{volumeCanvas.getContext('2d').putImageData(new ImageData(pixels,width,height),0,0);}
     const selectedFabric=getSupplierFabric(state.supplierFabric);
-    updateVolume(selectedFabric?.baseRGB||COLORS.find(c=>c.id===state.color).rgb,state,tile);
+    updateVolume(selectedFabric?.baseRGB||COLORS.find(c=>c.id===state.color).rgb,state,tile,relief);
     const cut=getOption('coatFront',state.tailoring.coatFront).label;
     const pockets=getOption('coatPockets',state.tailoring.coatPockets).label;
     const cloth=selectedFabric?selectedFabric.supplier+' '+selectedFabric.reference+' · '+selectedFabric.patternLabel:name(COLORS,state.color)+' · '+name(PATTERNS,state.pattern);

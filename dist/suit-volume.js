@@ -1,6 +1,7 @@
 import {rasterSuit} from './suit-raster.js';
 import {PATCH_WIDTH,PATCH_HEIGHT} from './fabric-patch.js';
 import {createButtons} from './buttons-3d.js';
+import {createShoes} from './shoes-3d.js';
 import * as T from './vendor/three.module.min.js';
 
 // Cross sections measured in the shared 384 × 576 studio frame.
@@ -26,13 +27,15 @@ function shape(part,y,across,radius,cs){
   if(part==='body'){
     // Back: shoulder blades, suppressed waist, and the skirt falling away to the vents;
     // two faint drape folds run from the blades towards the waist.
-    const folds=back>.35?Math.sin((Math.abs(across)-.32*(y-120))/4.2)*bell(y,165,30)*bell(Math.abs(across),28,18)*.9:0;
-    return -back*(3.2*bell(y,112,24)-3*bell(y,182,22)+1.8*bell(y,262,22))-folds*back;
+    const folds=back>.35?Math.sin((Math.abs(across)-.32*(y-120))/4.2)*bell(y,165,30)*bell(Math.abs(across),28,18)*1.5:0;
+    // below the waist the skirt falls in two long soft folds towards the vents
+    const fall=back>.3?Math.sin(Math.abs(across)/7.5+.6)*bell(y,246,26)*1.1:0;
+    return -back*(3.2*bell(y,112,24)-3*bell(y,182,22)+1.8*bell(y,262,22))-(folds+fall)*back;
   }
   if(part==='leg'){
     // Trousers: seat below the jacket, calf, and shallow creases behind the knee.
     const knee=Math.sin(y/3.1)*bell(y,404,12)*.7;
-    return -back*(7.5*bell(y,292,24)+2.2*bell(y,452,38)-knee);
+    return -back*(5*bell(y,300,22)+2.2*bell(y,452,38)-knee);
   }
   return 0;
 }
@@ -71,7 +74,13 @@ export function garmentGeometry(part,reflected=false,detail=1){
       if(part==='body')z+=2.8*Math.exp(-Math.pow((Math.abs(x-191)-(150-y)*.31)/5,2))*Math.max(0,cs);
       if(part==='collar')z-=3;
       if(part==='leg')z-=6;
-      pos.push((x-191)/100,(542-y)/100,z/100);
+      let lift=0;
+      if(detail>1&&part==='leg'&&y>496){
+        const t=(y-496)/45;
+        lift=t*t*(22*Math.max(0,cs)**1.5-5*Math.max(0,-cs)); // hem slopes from the instep down to the heel
+        z+=3.2*bell(y,512,9)*Math.max(0,cs)+1.5*t*t*cs; // the break: one soft fold above the shoe
+      }
+      pos.push((x-191)/100,(542-y+lift)/100,z/100);
       uv.push((center+(x-center)*.985)/384,1-y/576);
       surface.push(i/segments,(542-y)/180);
       // Behind the neck the jacket collar rises over the shirt: only its top edge keeps the photograph.
@@ -260,7 +269,9 @@ export function createStudio(host,original){
       .replace('#include <begin_vertex>','#include <begin_vertex>\nvFront=front;vPanel=panel;vCloth=uvFabric;vObject=position;');
     shader.fragmentShader=shader.fragmentShader
       .replace('#include <common>','#include <common>\nuniform sampler2D clothMap;\nuniform int vents;\nvarying float vFront;\nvarying float vPanel;\nvarying vec2 vCloth;\nvarying vec3 vObject;')
-      .replace('#include <map_fragment>',BACK_SEAMS);
+      .replace('#include <map_fragment>',BACK_SEAMS)
+      // relief from the photograph only where the photograph is shown
+      .replace('#include <bumpmap_pars_fragment>',T.ShaderChunk.bumpmap_pars_fragment.replaceAll('bumpScale *','bumpScale * vFront *'));
   };
   const side=new T.MeshStandardMaterial({roughness:.95});
   const garment=new T.Group();scene.add(garment);
@@ -309,7 +320,19 @@ export function createStudio(host,original){
       return snap(guess.position.clone().addScaledVector(guess.normal,.4),guess.normal.clone().negate(),sleeves)||guess;
     }
   };
-  const buttons=renderer?createButtons(scene,attach):null;
+  // Reflections for leather, horn and metal only (the cloth keeps its calibrated colours): a small studio
+  // with three softboxes, prefiltered once.
+  let studioReflections=null;
+  if(renderer){
+    const room=new T.Scene(),box=new T.Mesh(new T.BoxGeometry(10,6,10),new T.MeshBasicMaterial({color:0x8a8580,side:T.BackSide}));
+    room.add(box);
+    for(const [x,y,z,w,h,power] of [[-3,2.4,3,3,2,5],[3.2,1.6,2,2,3,3],[0,2.9,-1,5,.4,2.5],[0,-2.9,0,8,8,.35]]){
+      const panel=new T.Mesh(new T.PlaneGeometry(w,h),new T.MeshBasicMaterial({color:new T.Color(power,power,power)}));
+      panel.position.set(x,y,z);panel.lookAt(0,0,0);room.add(panel);
+    }
+    const pmrem=new T.PMREMGenerator(renderer);studioReflections=pmrem.fromScene(room,.03).texture;pmrem.dispose();
+  }
+  const buttons=renderer?createButtons(scene,attach,studioReflections):null,shoes=renderer?createShoes(scene,studioReflections):null;
   const LIMIT=renderer&&!reduced?Infinity:.62,REST=.11,TURN=2*Math.PI;
   const view={yaw:REST,half:2.83,center:2.55},goal={...view};
   let bust=false,zoom=1,active=false,drag=null,velocity=0,frame=0,last=0,introduced=false,lastMove=0,intro=null;
@@ -330,7 +353,7 @@ export function createStudio(host,original){
     const half=Math.max(view.half,1.23*h/w)/zoom,distance=half/Math.tan(fov*Math.PI/360);
     camera.aspect=w/h;camera.updateProjectionMatrix();
     camera.position.set(0,view.center+.04*distance,distance);camera.lookAt(0,view.center,0);
-    garment.rotation.y=view.yaw;if(buttons)buttons.group.rotation.y=view.yaw;renderer.render(scene,camera);
+    garment.rotation.y=view.yaw;if(buttons)buttons.group.rotation.y=view.yaw;if(shoes)shoes.group.rotation.y=view.yaw;renderer.render(scene,camera);
   }
   // Eased camera and inertia; frames are only drawn while something moves.
   function tick(now){
@@ -379,8 +402,9 @@ export function createStudio(host,original){
       schedule();paint();
     },
     zoom(v){zoom=v;paint();},
-    update(color,state,swatch){
+    update(color,state,swatch,relief){
+      if(relief&&photo.bumpMap?.image!==relief){photo.bumpMap=new T.CanvasTexture(relief);photo.bumpMap.anisotropy=texture.anisotropy;photo.bumpScale=1.6;photo.needsUpdate=true;}
       if(swatch){cloth.image=swatch;cloth.needsUpdate=true;}
-      vents.value={'sans-fente':0,'fente-centrale':1,'deux-fentes-laterales':2,'fentes-laterales-avec-patte':3}[state?.tailoring?.coatVents]??2;for(const mesh of details)mesh.visible=state?.closure==='double'&&state.tailoring?.coatLapel==='en-pointe';buttons?.update(state);rgb=color;if(software)cpuPixels=original.getContext('2d').getImageData(0,0,original.width,original.height).data;side.color.setRGB(...rgb.map(c=>c/255),T.SRGBColorSpace);photo.sheenColor.setRGB(...rgb.map(c=>Math.min(1,c/255*1.25+.03)),T.SRGBColorSpace);texture.needsUpdate=true;paint();}
+      vents.value={'sans-fente':0,'fente-centrale':1,'deux-fentes-laterales':2,'fentes-laterales-avec-patte':3}[state?.tailoring?.coatVents]??2;for(const mesh of details)mesh.visible=state?.closure==='double'&&state.tailoring?.coatLapel==='en-pointe';buttons?.update(state);rgb=color;if(software)cpuPixels=original.getContext('2d').getImageData(0,0,original.width,original.height).data;side.color.setRGB(...rgb.map(c=>c/255),T.SRGBColorSpace);shoes?.update(rgb);photo.sheenColor.setRGB(...rgb.map(c=>Math.min(1,c/255*1.25+.03)),T.SRGBColorSpace);texture.needsUpdate=true;paint();}
   };
 }
