@@ -15,3 +15,7 @@ body:has(.atelier){height:100dvh;overflow:hidden;display:flex;flex-direction:col
 
 .preview:has(#volume-toggle[aria-pressed=true]):not(.angle-active):not(.trouser-active) #view-caption{font-size:0}
 .preview:has(#volume-toggle[aria-pressed=true]):not(.angle-active):not(.trouser-active) #view-caption::after{content:"Vue 3D · glissez pour tourner";font-size:11px}
+
+.order-box{margin:26px 0 18px;padding:20px;border:1px solid #cfcabd;background:#fbfaf6}.order-box h3{margin:0 0 6px;font:normal 24px/1.2 Georgia,serif}.order-box>p{margin:0 0 14px;color:#595a50;font-size:15px;line-height:1.5}
+#order-form{display:grid;gap:12px}#order-form label{display:grid;gap:5px;font-size:14px;font-weight:600}#order-form input,#order-form textarea{font:inherit;font-weight:400;padding:11px 12px;border:1px solid #b9b5a8;border-radius:4px;background:#fff;width:100%}
+#order-form .order-trap{position:absolute;left:-9999px;width:1px;height:1px;overflow:hidden}#order-status:empty{display:none}#order-status{margin:12px 0 0;padding:10px 12px;border-left:3px solid #8a8f86;background:#f1efe8}#order-status[data-state="done"]{border-left-color:#3d6b52;background:#e6efe9}#order-status[data-state="error"]{border-left-color:#9a3324;background:#f6e7e3}

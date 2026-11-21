@@ -5,6 +5,7 @@ import {loadFabricTile} from './trouser-preview.js';
 import {fabricWeight} from './supplier-fabric-data.js';
 import {mountPreviewViews} from './preview-views.js';
 import {mountMeasurements} from './measurements.js';
+import {mountOrder} from './order.js';
 import {mountSupplierFabrics} from './supplier-fabrics.js';
 import {getSupplierFabric} from './supplier-fabric-data.js';
 import {mountEmbroidery} from './embroidery.js';
@@ -227,6 +228,7 @@ if(model==='droit'||model==='croise'){
   update({closure:model==='croise'?'double':'single',lapel:model==='croise'?'peak':'notch',color:'navy',pattern:'solid',fabric:'worsted'});
   history.replaceState(null,'',location.pathname+location.hash);
 }
+mountOrder(()=>config);
 mountMeasurements(config.tailoring.measurements,(key,value)=>{
   const measurements={...config.tailoring.measurements,[key]:value};
   config=normalize({...config,tailoring:{...config.tailoring,measurements}});save();catalog.refresh();
