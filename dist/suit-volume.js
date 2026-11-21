@@ -66,8 +66,8 @@ export function garmentGeometry(part,reflected=false,detail=1){
   for(const [y,l,r,depth] of rings){
     const center=reflected?382-(l+r)/2:(l+r)/2,radius=(r-l)/2;
     // The photograph is reliable on the front; the sides and back receive tiled cloth instead.
-    // Neck and shirt cuffs read the same all round, so they keep the photograph everywhere.
-    // Shirt cuff only: the cuff buttons painted just above it are replaced by real buttons in 3D.
+    // The neck reads the same all round, so it keeps the photograph everywhere. Shirt cuffs are flagged
+    // (panel 3): away from the front they are painted as plain white cotton by the shader.
     const neck=part==='collar'&&y<44,cuff=part==='sleeve'&&y>=257;
     const ringStart=pos.length/3;
     for(let i=0;i<=segments;i++){
@@ -97,8 +97,8 @@ export function garmentGeometry(part,reflected=false,detail=1){
       surface.push(i/segments,(542-y)/180);
       // Behind the neck the jacket collar rises over the shirt: only its top edge keeps the photograph.
       const t=Math.min(1,Math.max(0,(cs-.2)/.2));
-      front.push(cuff||(neck&&(cs>=0||y<34))?1:t*t*(3-2*t));
-      panel.push(part==='body'?1:part==='leg'?2:0);
+      front.push(neck&&(cs>=0||y<34)?1:t*t*(3-2*t));
+      panel.push(part==='body'?1:part==='leg'?2:cuff?4:part==='sleeve'?3:0);
     }
     // Cloth coordinates in world units (one scale everywhere): arc length measured from the back centre
     // in both directions, so stripes run straight down the back and continue unbroken across the side
@@ -241,7 +241,16 @@ function gradientTexture(stops,size=512,grain=0){
 // (object space: x across, y up, z < 0 behind). Seams are a pressed line with a soft shadow beside it.
 const BACK_SEAMS=`vec4 photoTexel=texture2D(map,vMapUv);
 vec4 clothTexel=texture2D(clothMap,vCloth);
-diffuseColor*=mix(clothTexel,photoTexel,vFront);
+// shirt cuffs: clean white cotton all round instead of the wrapped photograph
+float cuffness=smoothstep(3.5,4.0,vPanel);
+clothTexel=mix(clothTexel,vec4(0.9,0.9,0.89,1.0),cuffness);
+// where a leg or a sleeve overhangs the photographed outline, the photograph shows its backdrop:
+// those parts are dressed with the cloth (or the cuff) like the sides
+float shown=vFront;
+#ifdef USE_BUMPMAP
+shown*=1.0-step(1.5,vPanel)*smoothstep(0.3,0.7,texture2D(bumpMap,vBumpMapUv).b);
+#endif
+diffuseColor*=mix(clothTexel,photoTexel,shown);
 // side-back seams curve in at the waist and out to the armholes; the side vents open at their foot
 float seamX=0.47-0.07*exp(-pow((vObject.y-3.7)/0.45,2.0))+0.13*smoothstep(3.9,4.55,vObject.y);
 // collar: its fall edge dips at the centre back and rises towards the shoulders
@@ -249,7 +258,7 @@ float collarEdge=4.925+0.85*vObject.x*vObject.x;
 float nape=(1.0-vFront)*smoothstep(-0.02,-0.08,vObject.z)*step(abs(vObject.x),0.5);
 float underCollar=nape*step(vObject.y,collarEdge)*smoothstep(0.075,0.0,collarEdge-vObject.y);
 float collarLine=nape*(1.0-smoothstep(0.002,0.007,abs(vObject.y-collarEdge)));
-float isBody=step(0.5,vPanel)*step(vPanel,1.5),isLeg=step(1.5,vPanel);
+float isBody=step(0.5,vPanel)*step(vPanel,1.5),isLeg=step(1.5,vPanel)*step(vPanel,2.5);
 float rear=(1.0-vFront)*smoothstep(-0.02,-0.08,vObject.z);
 float behind=isBody*rear;
 float hem=step(2.62,vObject.y)*(1.0-step(3.16,vObject.y));
@@ -282,7 +291,7 @@ float pocketLip=legRear*smoothstep(0.03,0.0,2.4-vObject.y)*step(vObject.y,2.4)*(
 float pocketButton=legRear*(1.0-smoothstep(0.011,0.015,length(vec2(ax-0.31,vObject.y-2.365))));
 diffuseColor.rgb*=1.0-0.36*pocket-0.09*pocketLip-0.4*pocketButton;
 // wool: a fine twill and a faint mottling on the tiled cloth, fading out before they could shimmer
-float cover=1.0-vFront;
+float cover=(1.0-shown)*(1.0-cuffness);
 float twill=(vCloth.x*1.92+vObject.y)*520.0;
 float fine=1.0-smoothstep(0.6,1.6,fwidth(twill));
 float mottle=sin(vCloth.x*61.0+sin(vObject.y*37.0)*1.7)*sin(vObject.y*53.0+sin(vCloth.x*29.0)*1.3);
@@ -320,7 +329,7 @@ export function createStudio(host,original){
       .replace('#include <map_fragment>',BACK_SEAMS)
       // the photograph already carries its own studio lighting: keep most of it as shot, so the navy stays
       // deep and the shirt white; the moving lights only model the volume on top
-      .replace('#include <opaque_fragment>','outgoingLight=mix(outgoingLight,diffuseColor.rgb*mix(0.8,1.04,vFront),mix(0.5,0.62,vFront));\n#include <opaque_fragment>')
+      .replace('#include <opaque_fragment>','outgoingLight=mix(outgoingLight,diffuseColor.rgb*mix(0.8,1.04,shown),mix(0.5,0.62,shown));\n#include <opaque_fragment>')
       // relief from the photograph only where the photograph is shown
       .replace('#include <bumpmap_pars_fragment>',T.ShaderChunk.bumpmap_pars_fragment.replaceAll('bumpScale *','bumpScale * vFront *'));
   };

@@ -14,7 +14,7 @@ const smooth=(a,b,v)=>{const t=Math.min(1,Math.max(0,(v-a)/(b-a)));return t*t*(3
 const toeRound=s=>s<.6?1:Math.sqrt(Math.max(0,1-((s-.6)/.4)**2));
 const heelRound=s=>s>.06?1:Math.sqrt(Math.max(0,1-((.06-s)/.06)**2))*.55+.45;
 const halfWidth=s=>lerpCurve([[0,.112],[.15,.122],[.34,.128],[.6,.166],[.8,.166],[1,.166]],s)*toeRound(s)*heelRound(s);
-const height=s=>lerpCurve([[0,.2],[.2,.225],[.4,.265],[.55,.215],[.68,.15],[.82,.105],[.92,.088],[1,.07]],s)*(.3+.7*toeRound(s));
+const height=s=>lerpCurve([[0,.15],[.2,.155],[.4,.15],[.55,.13],[.68,.105],[.82,.088],[.92,.078],[1,.065]],s)*(.3+.7*toeRound(s));
 const underside=s=>.032+.068*(1-smooth(.22,.6,s))+.03*smooth(.82,1,s)**2;
 
 function loft(rings,segments,point){
@@ -89,13 +89,15 @@ export function createShoes(scene,reflections=null){
     strap:new T.MeshPhysicalMaterial({color:0x3a2318,roughness:.4,clearcoat:.7,clearcoatRoughness:.25,side:T.DoubleSide}),
     metal:new T.MeshPhysicalMaterial({color:0xc9c3b6,metalness:1,roughness:.22})
   };
+  // lofted shells are seen from outside on one foot and mirrored on the other: draw both faces
+  materials.leather.side=materials.sole.side=T.DoubleSide;
   for(const key of ['leather','strap','metal','sole'])Object.assign(materials[key],{envMap:reflections,envMapIntensity:key==='metal'?1:key==='sole'?.15:.55});
   const group=new T.Group();scene.add(group);
   // dark socks inside the trouser legs, so the open hems never show the backdrop
   const sock=new T.MeshStandardMaterial({color:0x17181c,roughness:.85});
   for(const side of [-1,1]){
-    const m=new T.Mesh(new T.CylinderGeometry(.118,.105,.5,24,1,true),sock);
-    m.position.set(side*.345,.25,-.06);group.add(m);
+    const m=new T.Mesh(new T.CylinderGeometry(.1,.082,.42,24,1,true),sock);
+    m.position.set(side*.345,.3,-.07);group.add(m);
   }
   // feet under the trouser legs (leg centres at ±0.345, slightly behind the front), toes turned out 7°
   for(const side of [-1,1]){
