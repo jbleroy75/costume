@@ -46,3 +46,6 @@ Responsive refinement: below 1024px, the preview stacks above the configuration;
 
 ### Révision du rendu textile — 13 octobre 2026
 Rayures affinées avec couverture douce et grain irrégulier, contraste fournisseur atténué dans les ombres. Orientation propre aux manches et aux deux revers du master croisé (coordonnées manuelles 2D). Les autres masters ne disposent pas encore de cartes de revers dédiées. Commandes de prévisualisation sorties de la superposition et placées dans leurs propres lignes, avec image contenue dans la zone disponible. Aucun modèle 3D ni calibrage physique du motif ajouté ; photos fournisseur originales inchangées. Contrôle du raster croisé effectué, contrôle navigateur indisponible dans cet environnement.
+
+### Vue 3D — mise en scène studio (21/11/2026)
+Rendu WebGL de `suit-volume.js` : caméra à longue focale, fond studio dégradé, ombre de contact sous les pieds, deux lumières de contour qui détachent la silhouette, léger lustre laineux teinté par le tissu (les couleurs restent fidèles), géométrie deux fois plus fine. Animations : quart de tour d'accueil à la première apparition, inertie après un glisser, transitions douces vers le buste ; rien de tout cela avec `prefers-reduced-motion`. Le rendu logiciel sans WebGL (`suit-raster.js`) et les géométries des tests sont inchangés.
