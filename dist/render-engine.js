@@ -142,7 +142,7 @@ export function renderPixels(source,input,tile=null) {
   const color=supplier?.baseRGB||COLORS.find(x=>x.id===config.color).rgb;
   const button=catalogButton?.rgb?catalogButton:BUTTONS.find(x=>x.id===config.buttons);
   const isLight=luminance(...color)>115;
-  const unit=width/1024;
+  const unit=source.unit??width/1024; // a swatch can keep the front render's scale at another size
   const period=(config.pattern==='pinstripe'?27:config.pattern==='glen'?37:config.pattern==='herringbone'?22:81)*unit*config.patternScale*(supplier?.stripePitch??1);
   const warpX=new Float32Array(height);
   for(let y=0;y<height;y++) warpX[y]=(Math.sin(y/(92*unit))*1.5+Math.sin(y/(231*unit))*2)*unit;
