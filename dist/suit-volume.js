@@ -10,12 +10,13 @@ const profiles={
   leg:[[267,131,194,25],[278,128,194,26],[294,129,191,25],[311,131,185,23],[340,133,181,21],[400,136,176,18],[490,137,175,17],[536,139,173,17],[541,142,171,15]]
 };
 
-export function garmentGeometry(part,reflected=false){
+// detail > 1 densifies rings and segments for the WebGL studio; the CPU fallback keeps detail 1.
+export function garmentGeometry(part,reflected=false,detail=1){
   const rows=profiles[part],pos=[],uv=[],idx=[],surface=[];
-  const segments=64;
+  const segments=Math.round(64*detail);
   const rings=[];
   for(let k=0;k<rows.length-1;k++){
-    const a=rows[k],b=rows[k+1],steps=Math.ceil((b[0]-a[0])/3);
+    const a=rows[k],b=rows[k+1],steps=Math.ceil((b[0]-a[0])*detail/3);
     for(let j=0;j<steps;j++)rings.push(a.map((v,i)=>v+(b[i]-v)*j/steps));
   }
   rings.push(rows.at(-1));
@@ -107,37 +108,68 @@ export function doubleFrontDetails(){
   return [tailoredPanel(overlap,false),...facings.map(rows=>tailoredPanel(rows,true))];
 }
 
+
+// Radial studio gradient, drawn once into a small canvas.
+function gradientTexture(stops,size=512,grain=0){
+  const c=document.createElement('canvas');c.width=c.height=size;
+  const g=c.getContext('2d'),r=g.createRadialGradient(size/2,size/2,0,size/2,size/2,size/2);
+  for(const [at,color] of stops)r.addColorStop(at,color);
+  g.fillStyle=r;g.fillRect(0,0,size,size);
+  if(grain){ // a little noise hides 8-bit banding in the large backdrop gradient
+    const img=g.getImageData(0,0,size,size),d=img.data;
+    for(let i=0;i<d.length;i+=4){const n=(Math.random()-.5)*grain;d[i]+=n;d[i+1]+=n;d[i+2]+=n;}
+    g.putImageData(img,0,0);
+  }
+  const t=new T.CanvasTexture(c);t.colorSpace=T.SRGBColorSpace;return t;
+}
+
 export function createStudio(host,original){
   let renderer;
   try{renderer=new T.WebGLRenderer({canvas:host,antialias:true,alpha:false,preserveDrawingBuffer:true});}catch{renderer=null;}
   const software=renderer?null:host.getContext('2d');
+  const reduced=matchMedia('(prefers-reduced-motion: reduce)').matches;
   let cpuPixels,rgb=[43,49,64];
   if(renderer){
-  renderer.setPixelRatio(Math.min(devicePixelRatio||1,2));
-  renderer.shadowMap.enabled=true;renderer.shadowMap.type=T.PCFSoftShadowMap;
-  renderer.setClearColor(0xece9e4);
+    renderer.setPixelRatio(Math.min(devicePixelRatio||1,2));
+    renderer.shadowMap.enabled=true;renderer.shadowMap.type=T.PCFSoftShadowMap;
+    renderer.setClearColor(0xe9e5de);
   }
-  const scene=new T.Scene(),camera=new T.OrthographicCamera(-2,2,3,-3,.1,40);
+  const scene=new T.Scene(),fov=15,camera=new T.PerspectiveCamera(fov,1,.5,200);
   const texture=new T.CanvasTexture(original);texture.colorSpace=T.SRGBColorSpace;
-  texture.anisotropy=renderer?Math.min(8,renderer.capabilities.getMaxAnisotropy()):1;
-  const photo=new T.MeshStandardMaterial({map:texture,roughness:.93,metalness:0});
+  texture.anisotropy=renderer?Math.min(16,renderer.capabilities.getMaxAnisotropy()):1;
+  // Wool reads as cloth thanks to a soft sheen on grazing angles; the photo keeps its own folds and shadows.
+  const photo=new T.MeshPhysicalMaterial({map:texture,roughness:.9,metalness:0,sheen:.22,sheenRoughness:.5});
   const side=new T.MeshStandardMaterial({roughness:.95});
   const garment=new T.Group();scene.add(garment);
+  const detail=renderer?2:1;
   for(const [part,mirror] of [['leg',false],['leg',true],['body',false],['sleeve',false],['sleeve',true],['collar',false]]){
-    const mesh=new T.Mesh(garmentGeometry(part,mirror),[photo,side]);mesh.castShadow=true;mesh.receiveShadow=true;garment.add(mesh);
+    const mesh=new T.Mesh(garmentGeometry(part,mirror,detail),[photo,side]);mesh.castShadow=true;mesh.receiveShadow=true;garment.add(mesh);
   }
   const details=doubleFrontDetails().map(geometry=>{
     const mesh=new T.Mesh(geometry,[photo,side]);mesh.castShadow=true;mesh.receiveShadow=true;garment.add(mesh);return mesh;
   });
-  const fill=new T.HemisphereLight(0xfbf8f3,0xc3bdba,1.65);scene.add(fill);
-  const key=new T.DirectionalLight(0xfff6ed,2.25);key.position.set(-3.2,8,5);key.castShadow=true;
+  // Lighting: soft fill, a high key light, and two rim lights that draw the silhouette out of the backdrop.
+  scene.add(new T.HemisphereLight(0xfbf8f3,0xbfb8b2,1.55));
+  const key=new T.DirectionalLight(0xfff4e8,2.3);key.position.set(-3.2,8,5);key.castShadow=true;
   Object.assign(key.shadow.camera,{left:-4,right:4,top:4,bottom:-4,near:.1,far:20});key.shadow.camera.updateProjectionMatrix();
-  key.shadow.mapSize.set(1024,1024);key.shadow.normalBias=.011;key.shadow.bias=-.0003;
+  key.shadow.mapSize.set(2048,2048);key.shadow.normalBias=.012;key.shadow.bias=-.0003;
   key.target.position.y=2.4;scene.add(key,key.target);
-  const floor=new T.Mesh(new T.PlaneGeometry(100,100),new T.ShadowMaterial({opacity:.22}));
+  for(const [x,color,power] of [[4.2,0xfffaf3,1.2],[-4.2,0xfff4e6,.95]]){
+    const rim=new T.DirectionalLight(color,power);rim.position.set(x,5.5,-5.5);rim.target.position.y=2.4;scene.add(rim,rim.target);
+  }
+  // Seamless studio backdrop, floor shadow and a soft contact shadow under the feet.
+  const backdrop=new T.Mesh(new T.PlaneGeometry(60,60),new T.MeshBasicMaterial({map:gradientTexture([[0,'#f6f3ee'],[.45,'#ede9e2'],[1,'#dcd6cc']],512,3),depthWrite:false}));
+  backdrop.position.set(0,3,-9);scene.add(backdrop);
+  const floor=new T.Mesh(new T.PlaneGeometry(40,40),new T.ShadowMaterial({opacity:.07}));
   floor.rotation.x=-Math.PI/2;floor.position.y=-.018;floor.receiveShadow=true;scene.add(floor);
-  let yaw=.11,bust=false,zoom=1,active=false,drag=null;
-  function draw(){
+  const contact=new T.Mesh(new T.PlaneGeometry(2.1,.9),new T.MeshBasicMaterial({map:gradientTexture([[0,'rgba(30,26,22,.5)'],[.35,'rgba(30,26,22,.24)'],[.7,'rgba(30,26,22,.07)'],[1,'rgba(30,26,22,0)']],256),transparent:true,depthWrite:false}));
+  contact.rotation.x=-Math.PI/2;contact.position.set(.03,-.012,.02);scene.add(contact);
+
+  const LIMIT=.62,REST=.11;
+  const view={yaw:REST,half:2.83,center:2.55},goal={...view};
+  let bust=false,zoom=1,active=false,drag=null,velocity=0,frame=0,last=0,introduced=false,lastMove=0;
+  const framing=()=>{goal.half=bust?1.40:2.83;goal.center=bust?3.96:2.55;};
+  function paint(){
     if(!active||!host.clientHeight||!host.clientWidth)return;
     const w=host.clientWidth,h=host.clientHeight;
     if(!renderer){
@@ -145,21 +177,57 @@ export function createStudio(host,original){
       const ratio=Math.min(1.4,1100/Math.max(w,h));
       const sw=Math.max(1,Math.round(w*ratio)),sh=Math.max(1,Math.round(h*ratio));
       if(host.width!==sw||host.height!==sh){host.width=sw;host.height=sh;}
-      const frame=rasterSuit(garment.children.filter(m=>m.visible).map(m=>m.geometry),cpuPixels,original.width,original.height,sw,sh,yaw,zoom,rgb,bust);
+      const frame=rasterSuit(garment.children.filter(m=>m.visible).map(m=>m.geometry),cpuPixels,original.width,original.height,sw,sh,view.yaw,zoom,rgb,bust);
       software.putImageData(new ImageData(frame,sw,sh),0,0);
       return;
     }
     renderer.setSize(w,h,false);
-    const half=Math.max(bust?1.40:2.83,1.23*h/w)/zoom;
-    Object.assign(camera,{left:-half*w/h,right:half*w/h,top:half,bottom:-half});
-    camera.updateProjectionMatrix();const center=bust?3.96:2.55;camera.position.set(0,center+.40,10);camera.lookAt(0,center,0);
-    garment.rotation.y=yaw;renderer.render(scene,camera);
+    const half=Math.max(view.half,1.23*h/w)/zoom,distance=half/Math.tan(fov*Math.PI/360);
+    camera.aspect=w/h;camera.updateProjectionMatrix();
+    camera.position.set(0,view.center+.04*distance,distance);camera.lookAt(0,view.center,0);
+    garment.rotation.y=view.yaw;renderer.render(scene,camera);
   }
-  function rotate(delta){yaw=Math.max(-.62,Math.min(.62,yaw+delta));draw();}
-  host.addEventListener('pointerdown',e=>{drag=e.clientX;host.setPointerCapture(e.pointerId);});
-  host.addEventListener('pointermove',e=>{if(drag!==null){rotate((e.clientX-drag)*.008);drag=e.clientX;}});
-  for(const type of ['pointerup','pointercancel','lostpointercapture'])host.addEventListener(type,()=>{drag=null;});
-  host.addEventListener('keydown',e=>{if(['ArrowLeft','ArrowRight','Home'].includes(e.key)){e.preventDefault();if(e.key==='Home'){yaw=0;draw();}else rotate(e.key==='ArrowRight'?.1:-.1);}});
-  new ResizeObserver(draw).observe(host);
-  return {bust(v){bust=v;yaw=v?.52:.11;draw();},show(v){active=v;draw();},zoom(v){zoom=v;draw();},update(color,state){for(const mesh of details)mesh.visible=state?.closure==='double'&&state.tailoring?.coatLapel==='en-pointe';rgb=color;if(software)cpuPixels=original.getContext('2d').getImageData(0,0,original.width,original.height).data;side.color.setRGB(...rgb.map(c=>c/255),T.SRGBColorSpace);texture.needsUpdate=true;draw();}};
+  // Eased camera and inertia; frames are only drawn while something moves.
+  function tick(now){
+    frame=0;const dt=Math.min(.05,(now-(last||now))/1000);last=now;
+    if(drag===null&&Math.abs(velocity)>.002){
+      goal.yaw+=velocity*dt;velocity*=Math.exp(-dt*3.2);
+      if(Math.abs(goal.yaw)>LIMIT){goal.yaw=Math.sign(goal.yaw)*LIMIT;velocity=0;}
+    }else if(drag===null)velocity=0;
+    const k=1-Math.exp(-dt*(drag===null?6:22));let moving=Math.abs(velocity)>.002;
+    for(const name of ['yaw','half','center']){
+      const gap=goal[name]-view[name];
+      if(Math.abs(gap)>.0004){view[name]+=gap*k;moving=true;}else view[name]=goal[name];
+    }
+    paint();
+    if(moving)schedule();else last=0;
+  }
+  function schedule(){
+    if(!renderer||reduced){Object.assign(view,goal);velocity=0;paint();return;}
+    if(!frame)frame=requestAnimationFrame(tick);
+  }
+  function setYaw(v){goal.yaw=Math.max(-LIMIT,Math.min(LIMIT,v));schedule();}
+  host.addEventListener('pointerdown',e=>{drag=e.clientX;lastMove=performance.now();velocity=0;host.setPointerCapture(e.pointerId);});
+  host.addEventListener('pointermove',e=>{
+    if(drag===null)return;
+    const now=performance.now(),delta=(e.clientX-drag)*.008,dt=Math.max(.008,(now-lastMove)/1000);
+    velocity=velocity*.6+.4*delta/dt;drag=e.clientX;lastMove=now;setYaw(goal.yaw+delta);
+  });
+  for(const type of ['pointerup','pointercancel','lostpointercapture'])host.addEventListener(type,()=>{
+    if(drag!==null&&performance.now()-lastMove>90)velocity=0;
+    drag=null;schedule();
+  });
+  host.addEventListener('keydown',e=>{if(['ArrowLeft','ArrowRight','Home'].includes(e.key)){e.preventDefault();velocity=0;setYaw(e.key==='Home'?REST:goal.yaw+(e.key==='ArrowRight'?.1:-.1));}});
+  new ResizeObserver(()=>paint()).observe(host);
+  return {
+    bust(v){bust=v;framing();goal.yaw=v?.52:REST;velocity=0;schedule();},
+    show(v){
+      active=v;
+      // First appearance: a short quarter turn shows the costume has volume.
+      if(v&&!introduced&&renderer&&!reduced&&host.clientHeight){introduced=true;view.yaw=goal.yaw+.5;}
+      schedule();paint();
+    },
+    zoom(v){zoom=v;paint();},
+    update(color,state){for(const mesh of details)mesh.visible=state?.closure==='double'&&state.tailoring?.coatLapel==='en-pointe';rgb=color;if(software)cpuPixels=original.getContext('2d').getImageData(0,0,original.width,original.height).data;side.color.setRGB(...rgb.map(c=>c/255),T.SRGBColorSpace);photo.sheenColor.setRGB(...rgb.map(c=>Math.min(1,c/255*1.25+.03)),T.SRGBColorSpace);texture.needsUpdate=true;paint();}
+  };
 }
