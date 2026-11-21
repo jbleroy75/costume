@@ -11,6 +11,31 @@ const profiles={
   leg:[[267,131,194,25],[278,128,194,26],[294,129,191,25],[311,131,185,23],[340,133,181,21],[400,136,176,18],[490,137,175,17],[536,139,173,17],[541,142,171,15]]
 };
 
+// Tailoring volume added to the WebGL geometry, in frame pixels along z (positive = towards the front).
+// Only depth changes, so the front photograph keeps its exact place on screen.
+const bell=(v,at,width)=>Math.exp(-(((v-at)/width)**2));
+function shape(part,y,across,radius,cs){
+  const back=Math.max(0,-cs);
+  if(part==='sleeve'){
+    // Arms hang with a slight forward pitch and the forearm bends forward from the elbow.
+    const t=Math.min(1,Math.max(0,(y-63)/200)),forearm=Math.log1p(Math.exp((t-.5)/.06))*.12;
+    const elbow=back*bell(y,168,14)*1.6; // a soft fold where the elbow bends
+    return 2.2*t+12*forearm-elbow;
+  }
+  if(part==='body'){
+    // Back: shoulder blades, suppressed waist, and the skirt falling away to the vents;
+    // two faint drape folds run from the blades towards the waist.
+    const folds=back>.35?Math.sin((Math.abs(across)-.32*(y-120))/4.2)*bell(y,165,30)*bell(Math.abs(across),28,18)*.9:0;
+    return -back*(3.2*bell(y,112,24)-3*bell(y,182,22)+1.8*bell(y,262,22))-folds*back;
+  }
+  if(part==='leg'){
+    // Trousers: seat below the jacket, calf, and shallow creases behind the knee.
+    const knee=Math.sin(y/3.1)*bell(y,404,12)*.7;
+    return -back*(7.5*bell(y,292,24)+2.2*bell(y,452,38)-knee);
+  }
+  return 0;
+}
+
 // detail > 1 densifies rings and segments for the WebGL studio; the CPU fallback keeps detail 1.
 export function garmentGeometry(part,reflected=false,detail=1){
   const rows=profiles[part],pos=[],uv=[],idx=[],surface=[];
@@ -39,6 +64,7 @@ export function garmentGeometry(part,reflected=false,detail=1){
       const a=i*2*Math.PI/segments-Math.PI,cs=Math.cos(a),sn=Math.sin(a);
       const x=center+radius*sn;
       let z=depth*cs;
+      if(detail>1)z+=shape(part,y,x-center,radius,cs);
       if(part==='leg')z+=2.3*Math.exp(-sn*sn/.045)*Math.max(0,cs);
       if(part==='body')z+=2.8*Math.exp(-Math.pow((Math.abs(x-191)-(150-y)*.31)/5,2))*Math.max(0,cs);
       if(part==='collar')z-=3;
@@ -51,15 +77,13 @@ export function garmentGeometry(part,reflected=false,detail=1){
       front.push(cuff||(neck&&(cs>=0||y<34))?1:t*t*(3-2*t));
       panel.push(part==='body'?1:0);
     }
-    // Cloth coordinates in world units (one scale everywhere): arc length measured from the front
-    // centre on the front half and from the back centre on the back half, like cut panels joined by
-    // side seams, so stripes stay straight down the back instead of following the front.
+    // Cloth coordinates in world units (one scale everywhere): arc length measured from the back centre
+    // in both directions, so stripes run straight down the back and continue unbroken across the side
+    // seams, as a tailor matches them. The two directions meet at the front centre, under the photograph.
     const step=i=>{const a=3*(ringStart+i),b=3*(ringStart+i-1);return Math.hypot(pos[a]-pos[b],pos[a+2]-pos[b+2]);};
-    const arc=new Float32Array(segments+1),half=segments/2,quarter=segments/4;
-    for(let i=half+1;i<=segments-quarter;i++)arc[i]=arc[i-1]+step(i);
-    for(let i=half-1;i>=quarter;i--)arc[i]=arc[i+1]-step(i+1);
-    for(let i=1;i<quarter;i++)arc[i]=arc[i-1]+step(i);
-    for(let i=segments-1;i>segments-quarter;i--)arc[i]=arc[i+1]-step(i+1);
+    const arc=new Float32Array(segments+1),half=segments/2;
+    for(let i=1;i<=half;i++)arc[i]=arc[i-1]+step(i);
+    for(let i=segments-1;i>half;i--)arc[i]=arc[i+1]-step(i+1);
     const shift=(reflected?7:0)+(part==='sleeve'?3:0);
     // Swatch coordinates: 200 render px per unit across; rows match the front render (2 px per frame px).
     for(let i=0;i<=segments;i++)uvFabric.push((arc[i]+shift)*200/PATCH_WIDTH,1-2*y/PATCH_HEIGHT);

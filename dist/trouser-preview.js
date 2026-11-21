@@ -146,6 +146,33 @@ function readTile(img){
   return tile;
 }
 
+// The jacket render reads this tile every ~2.2 px across, while a pinstripe is about 1 px wide: as the
+// grain drifts down the garment the samples alternately hit and miss the thread, cutting it into dashes.
+// Pre-filtering to the sampling step across (triangle, ±2 px) and along the stripe (yarn floats, ±4 px)
+// keeps one continuous, slightly softer thread.
+export function smoothAlongStripes(data,width,height,periodic=false){
+  const pass=(weights,dx,dy,size,wrap)=>{
+    const copy=new Uint8ClampedArray(data),reach=(weights.length-1)/2,total=weights.reduce((a,b)=>a+b,0);
+    for(let y=0;y<height;y++)for(let x=0;x<width;x++)for(let ch=0;ch<3;ch++){
+      let sum=0;
+      for(let k=-reach;k<=reach;k++){
+        const xx=wrap(x+k*dx,width),yy=wrap(y+k*dy,height);
+        sum+=weights[k+reach]*copy[4*(yy*width+xx)+ch];
+      }
+      data[4*(y*width+x)+ch]=sum/total;
+    }
+  };
+  const mirror=(v,size)=>{const m=((v%(2*size))+2*size)%(2*size);return m<size?m:2*size-1-m;};
+  const repeat=(v,size)=>((v%size)+size)%size;
+  pass([1,2,3,2,1],1,0,width,periodic?repeat:mirror);
+  pass([1,2,3,4,5,4,3,2,1],0,1,height,mirror);
+  // Filtering spreads the thread over ~2 px; restore its contrast against the cloth's mean colour.
+  const mean=[0,0,0],count=width*height;
+  for(let n=0;n<count;n++)for(let ch=0;ch<3;ch++)mean[ch]+=data[4*n+ch]/count;
+  for(let n=0;n<count;n++)for(let ch=0;ch<3;ch++)data[4*n+ch]=mean[ch]+(data[4*n+ch]-mean[ch])*1.8;
+  return data;
+}
+
 const jacketTiles=new WeakMap();
 export async function loadFabricTile(id){
   const cloth=getSupplierFabric(id);
@@ -159,6 +186,7 @@ export async function loadFabricTile(id){
     ctx.imageSmoothingQuality='high';
     ctx.drawImage(img,0,0,sourceWidth,img.height,0,0,canvas.width,canvas.height);
     const sample=ctx.getImageData(0,0,canvas.width,canvas.height);
+    if(cloth.pattern==='pinstripe')smoothAlongStripes(sample.data,sample.width,sample.height,Boolean(pitch));
     jacketTiles.set(img,{width:sample.width,height:sample.height,data:sample.data,periodic:Boolean(pitch)});
   }
   return jacketTiles.get(img);

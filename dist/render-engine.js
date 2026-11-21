@@ -164,8 +164,9 @@ export function renderPixels(source,input,tile=null) {
       if(config.pattern==='pinstripe') {
         // Fine woven thread: soft coverage, tiny interruptions, shaded by cloth.
         const distance=Math.min(modulo(u,period),period-modulo(u,period));
-        pattern=Math.exp(-.5*(distance/Math.max(.32,.48*unit*(supplier?.stripeWidth??1)))**2);
-        pattern*=.83+hash(x,y)*.28;
+        // At least ~half a pixel wide: thinner threads fall between pixels and break into dashes.
+        pattern=Math.exp(-.5*(distance/Math.max(.5,.48*unit*(supplier?.stripeWidth??1)))**2);
+        pattern*=.9+hash(x,y)*.14;
       }
       else if(config.pattern==='windowpane') pattern=Math.max(line(u,period,.8*unit),line(v,period*1.2,.8*unit));
       else if(config.pattern==='glen') {
