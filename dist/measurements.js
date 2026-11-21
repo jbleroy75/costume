@@ -1,3 +1,4 @@
+import {checkMeasurements,describeAlert} from './measure-check.js';
 export const measurements = [
   ['stature','Stature','Debout, pieds nus, du sol au sommet du crâne.'],
   ['poitrine','Tour de poitrine','Passez le ruban sous les aisselles, sur la partie la plus forte du buste.'],
@@ -51,6 +52,17 @@ function createPhotoDialog() {
 export function mountMeasurements(values, onChange) {
   const form = document.querySelector('#measure-fields');
   const openPhoto = createPhotoDialog();
+  // Plausibility check: a note under a value that does not fit the others. It never blocks the order.
+  const current = {...values}, notes = {};
+  const review = () => {
+    const found = Object.fromEntries(checkMeasurements(current).alerts.map(alert => [alert.key, alert]));
+    for (const [key, note] of Object.entries(notes)) {
+      const alert = found[key];
+      note.hidden = !alert;
+      note.textContent = alert ? describeAlert(alert) : '';
+      note.dataset.level = alert?.level ?? '';
+    }
+  };
   for (const [key, label, hint] of measurements) {
     const row = document.createElement('div');
     row.className = 'measure-card';
@@ -78,10 +90,15 @@ export function mountMeasurements(values, onChange) {
     input.addEventListener('change', () => {
       if (!input.checkValidity()) { input.reportValidity(); return; }
       onChange(key, input.value);
+      current[key] = input.value; review();
     });
+    const note = document.createElement('p'); note.className = 'measure-note'; note.hidden = true;
+    note.setAttribute('role', 'status'); notes[key] = note;
     const value = document.createElement('div'); value.className = 'measure-card-value';
     const unit = document.createElement('span'); unit.textContent = 'cm'; unit.setAttribute('aria-hidden', 'true');
-    value.append(input, unit); body.append(title, detail, value);
+    value.append(input, unit); body.append(title, detail, value, note);
     row.append(photo, body); form.append(row);
   }
+  form.addEventListener('reset', () => { for (const key of Object.keys(current)) delete current[key]; review(); });
+  review();
 }

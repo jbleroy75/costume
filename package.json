@@ -3,6 +3,6 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "check": "node --check dist/app.js && node --check dist/render-engine.js && node --check dist/catalog.js && node --check dist/catalog-data.js && node --check dist/flow.js && node tests/catalog.test.mjs && node tests/flow.test.mjs && node tests/render.test.mjs && node --check dist/design-assets.js && node tests/studio.test.mjs && node --check dist/embroidery.js && node --check dist/detail-positions.js && node tests/personalization.test.mjs && node --check dist/supplier-fabrics.js && node --check dist/supplier-fabric-data.js && node tests/supplier-fabrics.test.mjs && node tests/garment-details.test.mjs && node tests/trouser-preview.test.mjs && node tests/upper-body.test.mjs && node tests/suit-volume.test.mjs"
+    "check": "node --check dist/app.js && node --check dist/render-engine.js && node --check dist/catalog.js && node --check dist/catalog-data.js && node --check dist/flow.js && node tests/catalog.test.mjs && node tests/flow.test.mjs && node tests/render.test.mjs && node --check dist/design-assets.js && node tests/studio.test.mjs && node --check dist/embroidery.js && node --check dist/detail-positions.js && node tests/personalization.test.mjs && node --check dist/supplier-fabrics.js && node --check dist/supplier-fabric-data.js && node tests/supplier-fabrics.test.mjs && node tests/garment-details.test.mjs && node tests/trouser-preview.test.mjs && node tests/upper-body.test.mjs && node tests/suit-volume.test.mjs && node --check dist/measure-check.js && node tests/measure-check.test.mjs"
   }
 }
