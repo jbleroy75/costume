@@ -3,18 +3,18 @@ import * as T from './vendor/three.module.min.js';
 // Double monk strap shoes for the WebGL studio, modelled from cross-sections along the last: an almond
 // toe, a raised heel and toe spring, a separate sole and heel block, a cap-toe seam and two buckled
 // straps on the outer side. Units are studio units (1 ≈ 30 cm); the shoe points along +z from its heel.
-const L=.98;
+const L=.98,SIZE=.9;
 const lerpCurve=(points,s)=>{
-  const i=Math.min(points.length-2,Math.max(0,points.findIndex(p=>p[0]>s)-1)),[s0,a]=points[i],[s1,b]=points[i+1];
+  const next=points.findIndex(p=>p[0]>s),i=next<0?points.length-2:Math.max(0,next-1),[s0,a]=points[i],[s1,b]=points[i+1];
   const t=Math.min(1,Math.max(0,(s-s0)/(s1-s0))),u=t*t*(3-2*t);return a+(b-a)*u;
 };
 const smooth=(a,b,v)=>{const t=Math.min(1,Math.max(0,(v-a)/(b-a)));return t*t*(3-2*t);};
 // Proportions of a men's last (1 unit ≈ 30 cm): heel 7 cm wide, ball 10 cm, rounded almond toe;
 // heel counter ~7 cm, instep ~9 cm, toe box ~4 cm. The toe rounds off over its last 14 % in plan and profile.
-const toeRound=s=>s<.86?1:Math.sqrt(Math.max(0,1-((s-.86)/.14)**2));
+const toeRound=s=>s<.6?1:Math.sqrt(Math.max(0,1-((s-.6)/.4)**2));
 const heelRound=s=>s>.06?1:Math.sqrt(Math.max(0,1-((.06-s)/.06)**2))*.55+.45;
-const halfWidth=s=>lerpCurve([[0,.112],[.15,.122],[.34,.128],[.62,.168],[.8,.158],[.9,.135],[1,.1]],s)*toeRound(s)*heelRound(s);
-const height=s=>lerpCurve([[0,.2],[.2,.225],[.4,.265],[.55,.215],[.68,.165],[.82,.13],[.92,.12],[1,.1]],s)*(.25+.75*toeRound(s));
+const halfWidth=s=>lerpCurve([[0,.112],[.15,.122],[.34,.128],[.6,.166],[.8,.166],[1,.166]],s)*toeRound(s)*heelRound(s);
+const height=s=>lerpCurve([[0,.2],[.2,.225],[.4,.265],[.55,.215],[.68,.15],[.82,.105],[.92,.088],[1,.07]],s)*(.3+.7*toeRound(s));
 const underside=s=>.032+.068*(1-smooth(.22,.6,s))+.03*smooth(.82,1,s)**2;
 
 function loft(rings,segments,point){
@@ -26,6 +26,13 @@ function loft(rings,segments,point){
   for(let r=0;r<rings;r++)for(let k=0;k<segments;k++){
     const a=r*segments+k,b=r*segments+(k+1)%segments,c=a+segments,d=b+segments;idx.push(a,c,b,b,c,d);
   }
+  // closed ends: a fan over the first and the last ring
+  for(const [ring,flip] of [[0,false],[rings,true]]){
+    const start=ring*segments,centre=pos.length/3,sum=[0,0,0];
+    for(let k=0;k<segments;k++)for(let n=0;n<3;n++)sum[n]+=pos[3*(start+k)+n]/segments;
+    pos.push(...sum);colors.push(colors[3*start],colors[3*start],colors[3*start]);
+    for(let k=0;k<segments;k++){const a=start+k,b=start+(k+1)%segments;if(flip)idx.push(centre,a,b);else idx.push(centre,b,a);}
+  }
   const g=new T.BufferGeometry();g.setIndex(idx);
   g.setAttribute('position',new T.Float32BufferAttribute(pos,3));g.setAttribute('color',new T.Float32BufferAttribute(colors,3));
   g.computeVertexNormals();return g;
@@ -34,7 +41,7 @@ function loft(rings,segments,point){
 function upperPoint(s,a,out=0){
   const w=halfWidth(s)+out,h=height(s)+out,y0=underside(s);
   const c=Math.cos(a),sn=Math.sin(a);
-  return [w*Math.sign(c)*Math.pow(Math.abs(c),.8),sn>0?y0+h*Math.pow(sn,.42):y0+sn*.004,s*L];
+  return [w*Math.sign(c)*Math.pow(Math.abs(c),.8),sn>0?y0+h*Math.pow(sn,.42+.3*smooth(.5,.95,s)):y0+sn*.004,s*L];
 }
 
 function buildShoe(materials){
@@ -45,7 +52,7 @@ function buildShoe(materials){
   const sole=new T.Mesh(loft(70,40,(s,a)=>{
     const w=halfWidth(s)*1.06+.007,top=underside(s)+.004,arch=smooth(.24,.32,s)*(1-smooth(.5,.6,s));
     const bottom=s<.27?0:arch*(top-.03)+(1-arch)*(.03*smooth(.82,1,s)**2),c=Math.cos(a),sn=Math.sin(a);
-    return [[w*Math.sign(c)*Math.pow(Math.abs(c),.35),sn>0?top:bottom,s*L*1.01-.004],1];
+    return [[w*Math.sign(c)*Math.pow(Math.abs(c),.7),sn>0?top:bottom,s*L*1.01-.004],1];
   }),materials.sole);
   shoe.add(upper,sole);
   // cap-toe seam
@@ -69,33 +76,34 @@ function buildShoe(materials){
     const prong=new T.Mesh(new T.BoxGeometry(.003,.03,.003),materials.metal);prong.position.copy(at);prong.lookAt(next.clone().add(normal));
     shoe.add(buckle,prong);
   }
-  shoe.traverse(m=>{if(m.isMesh){m.castShadow=true;m.receiveShadow=true;}});
+  // no received shadow: under the hem the leather would turn black; the contact shadow grounds the shoe
+  shoe.traverse(m=>{if(m.isMesh)m.castShadow=true;});
   return shoe;
 }
 
 export function createShoes(scene,reflections=null){
   const materials={
-    leather:new T.MeshPhysicalMaterial({vertexColors:true,color:0x3a2318,roughness:.36,clearcoat:.85,clearcoatRoughness:.2,sheen:.25,sheenRoughness:.4}),
+    leather:new T.MeshPhysicalMaterial({vertexColors:true,color:0x40241a,roughness:.3,clearcoat:.9,clearcoatRoughness:.2,sheen:.25,sheenRoughness:.4}),
     sole:new T.MeshStandardMaterial({color:0x1c1512,roughness:.7}),
     seam:new T.MeshStandardMaterial({color:0x1a0f0a,roughness:.6}),
     strap:new T.MeshPhysicalMaterial({color:0x3a2318,roughness:.4,clearcoat:.7,clearcoatRoughness:.25,side:T.DoubleSide}),
     metal:new T.MeshPhysicalMaterial({color:0xc9c3b6,metalness:1,roughness:.22})
   };
-  for(const key of ['leather','strap','metal','sole'])Object.assign(materials[key],{envMap:reflections,envMapIntensity:key==='metal'?1:key==='sole'?.15:.32});
+  for(const key of ['leather','strap','metal','sole'])Object.assign(materials[key],{envMap:reflections,envMapIntensity:key==='metal'?1:key==='sole'?.15:.55});
   const group=new T.Group();scene.add(group);
   // dark socks inside the trouser legs, so the open hems never show the backdrop
   const sock=new T.MeshStandardMaterial({color:0x17181c,roughness:.85});
   for(const side of [-1,1]){
-    const m=new T.Mesh(new T.CylinderGeometry(.118,.112,.5,24,1,true),sock);
+    const m=new T.Mesh(new T.CylinderGeometry(.118,.105,.5,24,1,true),sock);
     m.position.set(side*.345,.25,-.06);group.add(m);
   }
   // feet under the trouser legs (leg centres at ±0.345, slightly behind the front), toes turned out 7°
   for(const side of [-1,1]){
     const shoe=buildShoe(materials),turn=side*.12;
     shoe.rotation.y=turn;
-    const heelBack=.2*L;
+    const heelBack=.13*L*SIZE;shoe.scale.setScalar(SIZE);
     shoe.position.set(side*.345-Math.sin(turn)*heelBack,-.014,-.06-Math.cos(turn)*heelBack);
-    if(side<0)shoe.scale.x=-1; // mirrored foot on the left of the picture: buckles stay on the outer sides
+    if(side<0)shoe.scale.x=-SIZE; // mirrored foot on the left of the picture: buckles stay on the outer sides
     group.add(shoe);
   }
   return {
@@ -105,6 +113,8 @@ export function createShoes(scene,reflections=null){
       const lum=.2126*rgb[0]+.7152*rgb[1]+.0722*rgb[2],grey=Math.max(...rgb)-Math.min(...rgb)<14;
       const color=grey&&lum<75?0x161414:0x3a2318;
       materials.leather.color.setHex(color);materials.strap.color.setHex(color);
+      // socks a shade darker than the cloth, as they are worn with a suit
+      sock.color.setRGB(...rgb.map(c=>c/255*.5),T.SRGBColorSpace);
     }
   };
 }

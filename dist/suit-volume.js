@@ -77,8 +77,8 @@ export function garmentGeometry(part,reflected=false,detail=1){
       let lift=0;
       if(detail>1&&part==='leg'&&y>496){
         const t=(y-496)/45;
-        lift=t*t*(22*Math.max(0,cs)**1.5-5*Math.max(0,-cs)); // hem slopes from the instep down to the heel
-        z+=3.2*bell(y,512,9)*Math.max(0,cs)+1.5*t*t*cs; // the break: one soft fold above the shoe
+        lift=t*t*(12+9*cs); // hem slopes from the instep down to the heel
+        z+=3.2*bell(y,512,9)*Math.max(0,cs)+(1.5+3*Math.max(0,cs))*t*t*cs; // the break: one soft fold above the shoe
       }
       pos.push((x-191)/100,(542-y+lift)/100,z/100);
       uv.push((center+(x-center)*.985)/384,1-y/576);
@@ -270,6 +270,9 @@ export function createStudio(host,original){
     shader.fragmentShader=shader.fragmentShader
       .replace('#include <common>','#include <common>\nuniform sampler2D clothMap;\nuniform int vents;\nvarying float vFront;\nvarying float vPanel;\nvarying vec2 vCloth;\nvarying vec3 vObject;')
       .replace('#include <map_fragment>',BACK_SEAMS)
+      // the photograph already carries its own studio lighting: keep most of it as shot, so the navy stays
+      // deep and the shirt white; the moving lights only model the volume on top
+      .replace('#include <opaque_fragment>','outgoingLight=mix(outgoingLight,diffuseColor.rgb*mix(0.8,1.04,vFront),mix(0.5,0.62,vFront));\n#include <opaque_fragment>')
       // relief from the photograph only where the photograph is shown
       .replace('#include <bumpmap_pars_fragment>',T.ShaderChunk.bumpmap_pars_fragment.replaceAll('bumpScale *','bumpScale * vFront *'));
   };
@@ -283,8 +286,8 @@ export function createStudio(host,original){
     const mesh=new T.Mesh(geometry,[photo,side]);mesh.castShadow=true;mesh.receiveShadow=true;garment.add(mesh);return mesh;
   });
   // Lighting: soft fill, a high key light, and two rim lights that draw the silhouette out of the backdrop.
-  scene.add(new T.HemisphereLight(0xfbf8f3,0xbfb8b2,1.55));
-  const key=new T.DirectionalLight(0xfff4e8,2.3);key.position.set(-3.2,8,5);key.castShadow=true;
+  scene.add(new T.HemisphereLight(0xfdfcfa,0xc9c5c0,1.55));
+  const key=new T.DirectionalLight(0xfffaf4,2.3);key.position.set(-3.2,8,5);key.castShadow=true;
   Object.assign(key.shadow.camera,{left:-4,right:4,top:4,bottom:-4,near:.1,far:20});key.shadow.camera.updateProjectionMatrix();
   key.shadow.mapSize.set(2048,2048);key.shadow.normalBias=.012;key.shadow.bias=-.0003;
   key.target.position.y=2.4;scene.add(key,key.target);
@@ -294,10 +297,23 @@ export function createStudio(host,original){
   // Seamless studio backdrop, floor shadow and a soft contact shadow under the feet.
   const backdrop=new T.Mesh(new T.PlaneGeometry(60,60),new T.MeshBasicMaterial({map:gradientTexture([[0,'#f6f3ee'],[.45,'#ede9e2'],[1,'#dcd6cc']],512,3),depthWrite:false}));
   backdrop.position.set(0,3,-9);scene.add(backdrop);
-  const floor=new T.Mesh(new T.PlaneGeometry(40,40),new T.ShadowMaterial({opacity:.07}));
-  floor.rotation.x=-Math.PI/2;floor.position.y=-.018;floor.receiveShadow=true;scene.add(floor);
-  const contact=new T.Mesh(new T.PlaneGeometry(2.1,.9),new T.MeshBasicMaterial({map:gradientTexture([[0,'rgba(30,26,22,.5)'],[.35,'rgba(30,26,22,.24)'],[.7,'rgba(30,26,22,.07)'],[1,'rgba(30,26,22,0)']],256),transparent:true,depthWrite:false}));
-  contact.rotation.x=-Math.PI/2;contact.position.set(.03,-.012,.02);scene.add(contact);
+  // Ground: a soft contact shadow painted once (a wide faint pool under the body, a tight dark one under
+  // each shoe) that turns with the suit. No hard cast shadow on the floor.
+  const pool=document.createElement('canvas');pool.width=pool.height=512;
+  {
+    const g=pool.getContext('2d'),blob=(x,z,rx,rz,alpha)=>{
+      g.save();g.translate((x+1.5)/3*512,(z+1.5)/3*512);g.scale(rx/3*512,rz/3*512);
+      const r=g.createRadialGradient(0,0,0,0,0,1);
+      for(const [at,k] of [[0,1],[.3,.72],[.55,.36],[.8,.1],[1,0]])r.addColorStop(at,`rgba(38,32,27,${alpha*k})`);
+      g.fillStyle=r;g.fillRect(-1,-1,2,2);g.restore();
+    };
+    blob(0,.05,1.25,.8,.17);blob(0,.02,.8,.42,.16);
+    for(const side of [-1,1]){blob(side*.36,.2,.3,.66,.3);blob(side*.36,.16,.17,.5,.34);}
+  }
+  const poolTexture=new T.CanvasTexture(pool);poolTexture.colorSpace=T.SRGBColorSpace;
+  const contact=new T.Mesh(new T.PlaneGeometry(3,3),new T.MeshBasicMaterial({map:poolTexture,transparent:true,depthWrite:false}));
+  contact.rotation.x=-Math.PI/2;contact.position.y=-.012;
+  const ground=new T.Group();ground.add(contact);scene.add(ground);
 
   // Trims are snapped onto the actual meshes (ray cast with the garment facing the camera).
   const ray=new T.Raycaster(),sleeves=garment.children.slice(3,5);
@@ -353,7 +369,7 @@ export function createStudio(host,original){
     const half=Math.max(view.half,1.23*h/w)/zoom,distance=half/Math.tan(fov*Math.PI/360);
     camera.aspect=w/h;camera.updateProjectionMatrix();
     camera.position.set(0,view.center+.04*distance,distance);camera.lookAt(0,view.center,0);
-    garment.rotation.y=view.yaw;if(buttons)buttons.group.rotation.y=view.yaw;if(shoes)shoes.group.rotation.y=view.yaw;renderer.render(scene,camera);
+    garment.rotation.y=ground.rotation.y=view.yaw;if(buttons)buttons.group.rotation.y=view.yaw;if(shoes)shoes.group.rotation.y=view.yaw;renderer.render(scene,camera);
   }
   // Eased camera and inertia; frames are only drawn while something moves.
   function tick(now){
