@@ -1,4 +1,5 @@
 import {rasterSuit} from './suit-raster.js';
+import {PATCH_WIDTH,PATCH_HEIGHT} from './fabric-patch.js';
 import * as T from './vendor/three.module.min.js';
 
 // Cross sections measured in the shared 384 × 576 studio frame.
@@ -15,13 +16,25 @@ export function garmentGeometry(part,reflected=false,detail=1){
   const rows=profiles[part],pos=[],uv=[],idx=[],surface=[];
   const segments=Math.round(64*detail);
   const rings=[];
+  // Detailed (WebGL) geometry follows a Catmull-Rom curve through the measured sections, so the
+  // surface has no crease at each section; the CPU fallback keeps the original straight segments.
+  const curve=(p0,p1,p2,p3,t)=>.5*(2*p1+(p2-p0)*t+(2*p0-5*p1+4*p2-p3)*t*t+(3*p1-p0-3*p2+p3)*t*t*t);
   for(let k=0;k<rows.length-1;k++){
     const a=rows[k],b=rows[k+1],steps=Math.ceil((b[0]-a[0])*detail/3);
-    for(let j=0;j<steps;j++)rings.push(a.map((v,i)=>v+(b[i]-v)*j/steps));
+    const before=rows[Math.max(0,k-1)],after=rows[Math.min(rows.length-1,k+2)];
+    for(let j=0;j<steps;j++){
+      const t=j/steps;
+      rings.push(detail>1?a.map((v,i)=>i?curve(before[i],v,b[i],after[i],t):v+(b[i]-v)*t):a.map((v,i)=>v+(b[i]-v)*t));
+    }
   }
   rings.push(rows.at(-1));
+  const front=[],uvFabric=[];
   for(const [y,l,r,depth] of rings){
     const center=reflected?382-(l+r)/2:(l+r)/2,radius=(r-l)/2;
+    // The photograph is reliable on the front; the sides and back receive tiled cloth instead.
+    // Neck and shirt cuffs read the same all round, so they keep the photograph everywhere.
+    const allRound=(part==='collar'&&y<44)||(part==='sleeve'&&y>=252);
+    const ringStart=pos.length/3;
     for(let i=0;i<=segments;i++){
       const a=i*2*Math.PI/segments-Math.PI,cs=Math.cos(a),sn=Math.sin(a);
       const x=center+radius*sn;
@@ -33,7 +46,20 @@ export function garmentGeometry(part,reflected=false,detail=1){
       pos.push((x-191)/100,(542-y)/100,z/100);
       uv.push((center+(x-center)*.985)/384,1-y/576);
       surface.push(i/segments,(542-y)/180);
+      const t=Math.min(1,Math.max(0,(cs-.12)/.38));
+      front.push(allRound?1:t*t*(3-2*t));
     }
+    // Cloth coordinates in world units (one scale everywhere): arc length measured from the front
+    // centre on the front half and from the back centre on the back half, like cut panels joined by
+    // side seams, so stripes stay straight down the back instead of following the front.
+    const step=i=>{const a=3*(ringStart+i),b=3*(ringStart+i-1);return Math.hypot(pos[a]-pos[b],pos[a+2]-pos[b+2]);};
+    const arc=new Float32Array(segments+1),half=segments/2,quarter=segments/4;
+    for(let i=half+1;i<=segments-quarter;i++)arc[i]=arc[i-1]+step(i);
+    for(let i=half-1;i>=quarter;i--)arc[i]=arc[i+1]-step(i+1);
+    for(let i=1;i<quarter;i++)arc[i]=arc[i-1]+step(i);
+    for(let i=segments-1;i>segments-quarter;i--)arc[i]=arc[i+1]-step(i+1);
+    const shift=(reflected?7:0)+(part==='sleeve'?3:0);
+    for(let i=0;i<=segments;i++)uvFabric.push(arc[i]+shift,pos[3*(ringStart+i)+1]);
   }
   const geo=new T.BufferGeometry();
   for(const front of [true,false]){
@@ -49,6 +75,8 @@ export function garmentGeometry(part,reflected=false,detail=1){
   geo.setAttribute('position',new T.Float32BufferAttribute(pos,3));
   geo.setAttribute('uv',new T.Float32BufferAttribute(uv,2));
   geo.setAttribute('uv1',new T.Float32BufferAttribute(surface,2));
+  geo.setAttribute('front',new T.Float32BufferAttribute(front,1));
+  geo.setAttribute('uvFabric',new T.Float32BufferAttribute(uvFabric,2));
   geo.computeVertexNormals();
   return geo;
 }
@@ -100,7 +128,10 @@ export function tailoredPanel(rows,rolled){
   }
   const geo=new T.BufferGeometry();geo.userData.raisedFacing=true;geo.setIndex(indices);geo.addGroup(0,topCount,0);geo.addGroup(topCount,indices.length-topCount,1);
   geo.setAttribute('position',new T.Float32BufferAttribute(positions,3));
-  geo.setAttribute('uv',new T.Float32BufferAttribute(uv,2));geo.computeVertexNormals();return geo;
+  geo.setAttribute('uv',new T.Float32BufferAttribute(uv,2));
+  geo.setAttribute('front',new T.Float32BufferAttribute(new Float32Array(positions.length/3).fill(1),1));
+  geo.setAttribute('uvFabric',new T.Float32BufferAttribute(new Float32Array(positions.length/3*2),2));
+  geo.computeVertexNormals();return geo;
 }
 
 export function doubleFrontDetails(){
@@ -139,11 +170,25 @@ export function createStudio(host,original){
   texture.anisotropy=renderer?Math.min(16,renderer.capabilities.getMaxAnisotropy()):1;
   // Wool reads as cloth thanks to a soft sheen on grazing angles; the photo keeps its own folds and shadows.
   const photo=new T.MeshPhysicalMaterial({map:texture,roughness:.9,metalness:0,sheen:.22,sheenRoughness:.5});
+  // Back and sides: the selected cloth, tiled at the scale of the front render (200 canvas px per unit).
+  const cloth=new T.CanvasTexture(document.createElement('canvas'));
+  cloth.colorSpace=T.SRGBColorSpace;cloth.wrapS=cloth.wrapT=T.MirroredRepeatWrapping;
+  cloth.anisotropy=texture.anisotropy;
+  const clothScale=new T.Vector2(200/PATCH_WIDTH,200/PATCH_HEIGHT);
+  photo.onBeforeCompile=shader=>{
+    Object.assign(shader.uniforms,{clothMap:{value:cloth},clothScale:{value:clothScale}});
+    shader.vertexShader=shader.vertexShader
+      .replace('#include <common>','#include <common>\nattribute float front;\nattribute vec2 uvFabric;\nvarying float vFront;\nvarying vec2 vCloth;')
+      .replace('#include <begin_vertex>','#include <begin_vertex>\nvFront=front;vCloth=uvFabric;');
+    shader.fragmentShader=shader.fragmentShader
+      .replace('#include <common>','#include <common>\nuniform sampler2D clothMap;\nuniform vec2 clothScale;\nvarying float vFront;\nvarying vec2 vCloth;')
+      .replace('#include <map_fragment>','vec4 photoTexel=texture2D(map,vMapUv);\nvec4 clothTexel=texture2D(clothMap,vCloth*clothScale);\ndiffuseColor*=mix(clothTexel,photoTexel,vFront);');
+  };
   const side=new T.MeshStandardMaterial({roughness:.95});
   const garment=new T.Group();scene.add(garment);
   const detail=renderer?2:1;
   for(const [part,mirror] of [['leg',false],['leg',true],['body',false],['sleeve',false],['sleeve',true],['collar',false]]){
-    const mesh=new T.Mesh(garmentGeometry(part,mirror,detail),[photo,side]);mesh.castShadow=true;mesh.receiveShadow=true;garment.add(mesh);
+    const mesh=new T.Mesh(garmentGeometry(part,mirror,detail),renderer?photo:[photo,side]);mesh.castShadow=true;mesh.receiveShadow=true;garment.add(mesh);
   }
   const details=doubleFrontDetails().map(geometry=>{
     const mesh=new T.Mesh(geometry,[photo,side]);mesh.castShadow=true;mesh.receiveShadow=true;garment.add(mesh);return mesh;
@@ -165,9 +210,9 @@ export function createStudio(host,original){
   const contact=new T.Mesh(new T.PlaneGeometry(2.1,.9),new T.MeshBasicMaterial({map:gradientTexture([[0,'rgba(30,26,22,.5)'],[.35,'rgba(30,26,22,.24)'],[.7,'rgba(30,26,22,.07)'],[1,'rgba(30,26,22,0)']],256),transparent:true,depthWrite:false}));
   contact.rotation.x=-Math.PI/2;contact.position.set(.03,-.012,.02);scene.add(contact);
 
-  const LIMIT=.62,REST=.11;
+  const LIMIT=renderer&&!reduced?Infinity:.62,REST=.11,TURN=2*Math.PI;
   const view={yaw:REST,half:2.83,center:2.55},goal={...view};
-  let bust=false,zoom=1,active=false,drag=null,velocity=0,frame=0,last=0,introduced=false,lastMove=0;
+  let bust=false,zoom=1,active=false,drag=null,velocity=0,frame=0,last=0,introduced=false,lastMove=0,intro=null;
   const framing=()=>{goal.half=bust?1.40:2.83;goal.center=bust?3.96:2.55;};
   function paint(){
     if(!active||!host.clientHeight||!host.clientWidth)return;
@@ -194,7 +239,12 @@ export function createStudio(host,original){
       goal.yaw+=velocity*dt;velocity*=Math.exp(-dt*3.2);
       if(Math.abs(goal.yaw)>LIMIT){goal.yaw=Math.sign(goal.yaw)*LIMIT;velocity=0;}
     }else if(drag===null)velocity=0;
-    const k=1-Math.exp(-dt*(drag===null?6:22));let moving=Math.abs(velocity)>.002;
+    if(intro){ // first appearance: one slow full turn, eased in and out
+      const t=Math.min(1,(now-intro)/2600),e=t<.5?4*t*t*t:1-Math.pow(-2*t+2,3)/2;
+      view.yaw=goal.yaw=REST-TURN*(1-e);
+      if(t>=1)intro=null;
+    }
+    const k=1-Math.exp(-dt*(drag===null?6:22));let moving=Math.abs(velocity)>.002||Boolean(intro);
     for(const name of ['yaw','half','center']){
       const gap=goal[name]-view[name];
       if(Math.abs(gap)>.0004){view[name]+=gap*k;moving=true;}else view[name]=goal[name];
@@ -207,7 +257,7 @@ export function createStudio(host,original){
     if(!frame)frame=requestAnimationFrame(tick);
   }
   function setYaw(v){goal.yaw=Math.max(-LIMIT,Math.min(LIMIT,v));schedule();}
-  host.addEventListener('pointerdown',e=>{drag=e.clientX;lastMove=performance.now();velocity=0;host.setPointerCapture(e.pointerId);});
+  host.addEventListener('pointerdown',e=>{intro=null;drag=e.clientX;lastMove=performance.now();velocity=0;host.setPointerCapture(e.pointerId);});
   host.addEventListener('pointermove',e=>{
     if(drag===null)return;
     const now=performance.now(),delta=(e.clientX-drag)*.008,dt=Math.max(.008,(now-lastMove)/1000);
@@ -217,17 +267,19 @@ export function createStudio(host,original){
     if(drag!==null&&performance.now()-lastMove>90)velocity=0;
     drag=null;schedule();
   });
-  host.addEventListener('keydown',e=>{if(['ArrowLeft','ArrowRight','Home'].includes(e.key)){e.preventDefault();velocity=0;setYaw(e.key==='Home'?REST:goal.yaw+(e.key==='ArrowRight'?.1:-.1));}});
+  const nearestFront=()=>REST+TURN*Math.round((goal.yaw-REST)/TURN);
+  host.addEventListener('keydown',e=>{if(['ArrowLeft','ArrowRight','Home'].includes(e.key)){e.preventDefault();intro=null;velocity=0;const step=LIMIT===Infinity?Math.PI/4:.1;setYaw(e.key==='Home'?nearestFront():goal.yaw+(e.key==='ArrowRight'?step:-step));}});
   new ResizeObserver(()=>paint()).observe(host);
   return {
-    bust(v){bust=v;framing();goal.yaw=v?.52:REST;velocity=0;schedule();},
+    bust(v){bust=v;framing();intro=null;goal.yaw=nearestFront()+(v?.41:0);velocity=0;schedule();},
     show(v){
       active=v;
       // First appearance: a short quarter turn shows the costume has volume.
-      if(v&&!introduced&&renderer&&!reduced&&host.clientHeight){introduced=true;view.yaw=goal.yaw+.5;}
+      if(v&&!introduced&&renderer&&!reduced&&host.clientHeight){introduced=true;intro=performance.now();}
       schedule();paint();
     },
     zoom(v){zoom=v;paint();},
-    update(color,state){for(const mesh of details)mesh.visible=state?.closure==='double'&&state.tailoring?.coatLapel==='en-pointe';rgb=color;if(software)cpuPixels=original.getContext('2d').getImageData(0,0,original.width,original.height).data;side.color.setRGB(...rgb.map(c=>c/255),T.SRGBColorSpace);photo.sheenColor.setRGB(...rgb.map(c=>Math.min(1,c/255*1.25+.03)),T.SRGBColorSpace);texture.needsUpdate=true;paint();}
+    update(color,state,swatch){
+      if(swatch){cloth.image=swatch;cloth.needsUpdate=true;}for(const mesh of details)mesh.visible=state?.closure==='double'&&state.tailoring?.coatLapel==='en-pointe';rgb=color;if(software)cpuPixels=original.getContext('2d').getImageData(0,0,original.width,original.height).data;side.color.setRGB(...rgb.map(c=>c/255),T.SRGBColorSpace);photo.sheenColor.setRGB(...rgb.map(c=>Math.min(1,c/255*1.25+.03)),T.SRGBColorSpace);texture.needsUpdate=true;paint();}
   };
 }
