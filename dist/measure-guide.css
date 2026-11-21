@@ -21,3 +21,4 @@
 
 .measure-card-body .measure-note{margin:2px 0 0;padding:8px 10px;border-left:3px solid #a8782a;background:#f6efe2;color:#4a3a1c;font-size:14px;line-height:1.4}
 .measure-card-body .measure-note[data-level="error"]{border-left-color:#9a3324;background:#f6e7e3;color:#57201a}
+.measure-card.measure-card-plain{grid-template-columns:minmax(0,1fr)}

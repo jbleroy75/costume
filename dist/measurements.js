@@ -7,7 +7,8 @@ export const measurements = [
   ['epaules','Carrure dos','D’une extrémité de l’épaule à l’autre en suivant le haut du dos.'],
   ['manche','Longueur de manche','Du point d’épaule au poignet, le bras légèrement fléchi.'],
   ['dos','Longueur de dos','De la base de la nuque à la taille naturelle.'],
-  ['entrejambe','Entrejambe','Mesurez le long de la jambe, de l’entrejambe au bas souhaité.']
+  ['entrejambe','Entrejambe','Mesurez le long de la jambe, de l’entrejambe au bas souhaité.'],
+  ['poids','Poids','Facultatif. Sur une balance, sans chaussures : il aide à repérer une mesure mal prise.','kg']
 ];
 export function normalizeMeasurements(input = {}) {
   const result = {};
@@ -63,9 +64,11 @@ export function mountMeasurements(values, onChange) {
       note.dataset.level = alert?.level ?? '';
     }
   };
-  for (const [key, label, hint] of measurements) {
+  for (const [key, label, hint, unitName = 'cm'] of measurements) {
     const row = document.createElement('div');
     row.className = 'measure-card';
+    const pictured = Boolean(photoDescriptions[key]);
+    if (!pictured) row.classList.add('measure-card-plain');
     const photo = document.createElement('button');
     photo.type = 'button'; photo.className = 'measure-card-photo';
     photo.setAttribute('aria-label', 'Agrandir la photo : ' + label);
@@ -84,7 +87,7 @@ export function mountMeasurements(values, onChange) {
     const input = document.createElement('input');
     input.id = 'measure-value-' + key; title.htmlFor = input.id;
     input.setAttribute('aria-describedby', detail.id);
-    input.setAttribute('aria-label', label + ', en centimètres');
+    input.setAttribute('aria-label', label + (unitName === 'kg' ? ', en kilogrammes' : ', en centimètres'));
     input.type = 'number'; input.min = '0.1'; input.max = '300'; input.step = '0.1';
     input.inputMode = 'decimal'; input.dataset.measure = key; input.value = values[key] ?? '';
     input.addEventListener('change', () => {
@@ -95,9 +98,10 @@ export function mountMeasurements(values, onChange) {
     const note = document.createElement('p'); note.className = 'measure-note'; note.hidden = true;
     note.setAttribute('role', 'status'); notes[key] = note;
     const value = document.createElement('div'); value.className = 'measure-card-value';
-    const unit = document.createElement('span'); unit.textContent = 'cm'; unit.setAttribute('aria-hidden', 'true');
+    const unit = document.createElement('span'); unit.textContent = unitName; unit.setAttribute('aria-hidden', 'true');
     value.append(input, unit); body.append(title, detail, value, note);
-    row.append(photo, body); form.append(row);
+    if (pictured) row.append(photo, body); else row.append(body);
+    form.append(row);
   }
   form.addEventListener('reset', () => { for (const key of Object.keys(current)) delete current[key]; review(); });
   review();

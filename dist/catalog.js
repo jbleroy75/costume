@@ -47,8 +47,8 @@ export function configurationRows(config) {
   rows.push({category:'Gilet',field:'Costume trois pièces',value:selections.vestEnabled?'Avec gilet':'Sans gilet',sourcePage:11});
   for(const [field,label,page] of [['liningReference','Doublure souhaitée',null],['customNotes','Instructions complémentaires',null]])if(selections[field])rows.push({category:'Finitions',field:label,value:selections[field],sourcePage:page});
   for(const entry of selections.embroidery){if(!entry.enabled||!entry.text.trim()||(entry.location==='vest-left'&&!selections.vestEnabled))continue;const location=LOCATIONS.find(l=>l.id===entry.location);rows.push({category:'Finitions',field:`Inscription · ${location.label}`,value:`${entry.text} · ${getOption('monogramFont',entry.font).label} · fil ${entry.color}`});}
-  for(const [key,label] of measurements) {
-    if(selections.measurements[key]) rows.push({category:'Mesures',field:label,value:selections.measurements[key]+' cm'});
+  for(const [key,label,,unit='cm'] of measurements) {
+    if(selections.measurements[key]) rows.push({category:'Mesures',field:label,value:selections.measurements[key]+' '+unit});
   }
   return rows;
 }

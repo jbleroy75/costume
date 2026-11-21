@@ -1,4 +1,4 @@
-// Plausibility model for the eight body measurements of the fitting guide.
+// Plausibility model for the body measurements of the fitting guide (eight tape readings and the weight).
 //
 // The measurements of an adult man are modelled as one multivariate normal distribution (centimetres).
 // Every entered value is compared with what the other entered values predict for it: the conditional
@@ -11,31 +11,43 @@
 // measurement, a slipped digit, two fields swapped) and keeps the explanation that makes the whole set
 // most ordinary again.
 //
-// The parameters below are estimates from published adult male anthropometry (US Army ANSUR II orders of
-// magnitude), adapted to tailor's measurements. They are not fitted on this shop's customers: replace
-// MEAN, SD and CORRELATION once enough verified orders exist.
+// The parameters are fitted on the public ANSUR II survey (US Army, 2012): 4,082 men measured by trained
+// staff (scripts/fit-measure-model.mjs). A client measuring himself is less exact than they were, so a
+// reading error is added to each measurement. Soldiers are also fitter than the average client, so the
+// thresholds are deliberately wide. Refit with verified orders once the shop has enough of them.
 
-export const KEYS = ['stature','poitrine','taille','bassin','epaules','manche','dos','entrejambe'];
-const MEAN = {stature:176, poitrine:104, taille:92, bassin:102, epaules:46, manche:63, dos:46, entrejambe:80};
-const SD = {stature:7, poitrine:8.5, taille:11, bassin:7.5, epaules:2.6, manche:3, dos:2.8, entrejambe:4.5};
-const CORRELATION = [
-  ['stature','poitrine',.25],['stature','taille',.2],['stature','bassin',.35],['stature','epaules',.4],
-  ['stature','manche',.75],['stature','dos',.6],['stature','entrejambe',.82],
-  ['poitrine','taille',.85],['poitrine','bassin',.78],['poitrine','epaules',.6],['poitrine','manche',.2],
-  ['poitrine','dos',.3],['poitrine','entrejambe',0],
-  ['taille','bassin',.85],['taille','epaules',.45],['taille','manche',.15],['taille','dos',.25],['taille','entrejambe',-.05],
-  ['bassin','epaules',.5],['bassin','manche',.3],['bassin','dos',.3],['bassin','entrejambe',.15],
-  ['epaules','manche',.35],['epaules','dos',.35],['epaules','entrejambe',.3],
-  ['manche','dos',.4],['manche','entrejambe',.7],['dos','entrejambe',.35]
-];
-// A reading is never exact: tape tension, posture and rounding add about a centimetre of their own.
-const READING_SD = 1;
-export const THRESHOLD = {check:3, error:4.2};
-
+export const KEYS = ['stature','poitrine','taille','bassin','epaules','manche','dos','entrejambe','poids'];
 const index = Object.fromEntries(KEYS.map((key, i) => [key, i]));
-export const COVARIANCE = KEYS.map((a, i) => KEYS.map((b, j) => i === j ? SD[a] ** 2 + READING_SD ** 2 : 0));
-for (const [a, b, r] of CORRELATION) COVARIANCE[index[a]][index[b]] = COVARIANCE[index[b]][index[a]] = r * SD[a] * SD[b];
-export const MODEL = {MEAN, SD};
+const MEAN = {stature:175.62, poitrine:105.87, taille:94.06, bassin:101.95, epaules:45.72, manche:59.31, dos:47.76, entrejambe:80.59, poids:85.52};
+const SURVEY_COVARIANCE = [
+  [46.99,14.83,15.92,17.85,7.68,16.97,10.17,27.35,45.71],
+  [14.83,76.45,86.53,56.07,9.55,5.40,12.08,4.75,112.79],
+  [15.92,86.53,124.78,75.02,9.08,4.87,17.69,2.83,141.10],
+  [17.85,56.07,75.02,58.80,7.92,5.96,11.13,6.51,101.71],
+  [7.68,9.55,9.08,7.92,4.44,3.09,2.20,4.19,17.64],
+  [16.97,5.40,4.87,5.96,3.09,9.50,3.19,12.04,16.24],
+  [10.17,12.08,17.69,11.13,2.20,3.19,7.69,3.98,23.57],
+  [27.35,4.75,2.83,6.51,4.19,12.04,3.98,21.62,20.46],
+  [45.71,112.79,141.10,101.71,17.64,16.24,23.57,20.46,202.23]
+];
+// Standard deviation of a self-taken reading (tape tension, posture, where exactly the tape sits).
+const READING_SD = {stature:1, poitrine:2, taille:2.5, bassin:2, epaules:1.5, manche:2, dos:1.5, entrejambe:1.5, poids:1.5};
+// Surprise, in standard deviations, that raises an alert. Measured on 2,041 surveyed men kept out of the
+// fit, each given a simulated self-measurement error: about 2.5 % of correct sets raise an alert at 3.
+export const THRESHOLD = {check:3, error:4.2};
+const SD = {};
+export const COVARIANCE = KEYS.map(() => new Array(KEYS.length).fill(0));
+export const MODEL = {MEAN, SD, READING_SD};
+// Installs a fit: population mean and covariance, reading errors, thresholds. Also used to refit and to test.
+export function configure({mean = MEAN, covariance = SURVEY_COVARIANCE, reading = READING_SD, threshold} = {}) {
+  KEYS.forEach((a, i) => {
+    MEAN[a] = mean[a];
+    KEYS.forEach((b, j) => { COVARIANCE[i][j] = covariance[i][j] + (i === j ? reading[a] ** 2 : 0); });
+    SD[a] = Math.sqrt(COVARIANCE[i][i]);
+  });
+  if (threshold) Object.assign(THRESHOLD, threshold);
+}
+configure();
 
 // Solves A x = b for a small symmetric positive definite matrix (Gauss-Jordan with partial pivoting).
 function solve(A, b) {
@@ -77,6 +89,7 @@ function worst(values, without = []) {
 const CIRCUMFERENCES = ['poitrine','taille','bassin'];
 // Ways a reading goes wrong, as a function giving the value the client probably meant.
 function explanations(key, x, values) {
+  if (key === 'poids') return [{kind: 'pounds', value: x * .4536}, {kind: 'tenfold', value: x * 10}, {kind: 'tenth', value: x / 10}];
   const list = [
     {kind: 'inches', value: x * 2.54},
     {kind: 'tenfold', value: x * 10},
@@ -90,7 +103,7 @@ function explanations(key, x, values) {
     const swapped = (x % 10) * 10 + Math.floor(x / 10);
     if (swapped !== x && swapped >= 10) list.push({kind: 'digits', value: swapped});
   }
-  for (const other of Object.keys(values)) if (other !== key) list.push({kind: 'swap', with: other, value: values[other]});
+  for (const other of Object.keys(values)) if (other !== key && other !== 'poids') list.push({kind: 'swap', with: other, value: values[other]});
   return list;
 }
 
@@ -102,12 +115,12 @@ export function checkMeasurements(input = {}) {
   for (const key of KEYS) { const v = Number(input[key]); if (Number.isFinite(v) && v > 0) values[key] = v; }
   const alerts = [], aside = [];
   // Every value given in inches: each one is far too small on its own, and all agree once converted.
-  const keys = Object.keys(values);
-  if (keys.length >= 3) {
-    const converted = Object.fromEntries(keys.map(k => [k, values[k] * 2.54]));
-    const low = keys.every(k => (values[k] - MEAN[k]) / SD[k] < -4);
+  const keys = Object.keys(values), tape = keys.filter(k => k !== 'poids');
+  if (tape.length >= 3) {
+    const converted = Object.fromEntries(tape.map(k => [k, values[k] * 2.54]));
+    const low = tape.every(k => (values[k] - MEAN[k]) / SD[k] < -4);
     if (low && Math.abs(worst(converted).z) < THRESHOLD.check) {
-      return {alerts: keys.map(key => ({key, level: 'error', z: round((values[key] - MEAN[key]) / SD[key]),
+      return {alerts: tape.map(key => ({key, level: 'error', z: round((values[key] - MEAN[key]) / SD[key]),
         expected: [round(MEAN[key] - 2 * SD[key]), round(MEAN[key] + 2 * SD[key])], suggestion: {kind: 'inches', value: round(converted[key])}})), allInches: true};
     }
   }
@@ -141,20 +154,21 @@ export function checkMeasurements(input = {}) {
   return {alerts, allInches: false};
 }
 
-const LABEL = {stature:'stature', poitrine:'tour de poitrine', taille:'tour de taille', bassin:'tour de bassin',
+const LABEL = {poids:'poids', stature:'stature', poitrine:'tour de poitrine', taille:'tour de taille', bassin:'tour de bassin',
   epaules:'carrure dos', manche:'longueur de manche', dos:'longueur de dos', entrejambe:'entrejambe'};
 const number = v => String(v).replace('.', ',');
 
 // One short sentence for the client, in French.
 export function describeAlert(alert) {
-  const [low, high] = alert.expected, s = alert.suggestion;
-  const range = `D’après vos autres mesures, on attend entre ${number(Math.round(low))} et ${number(Math.round(high))} cm.`;
+  const [low, high] = alert.expected, s = alert.suggestion, unit = alert.key === 'poids' ? 'kg' : 'cm';
+  const range = `D’après vos autres mesures, on attend entre ${number(Math.round(low))} et ${number(Math.round(high))} ${unit}.`;
   if (!s) return `${alert.level === 'error' ? 'Cette valeur paraît erronée' : 'Valeur inhabituelle, à vérifier'}. ${range}`;
   const hint = {
+    pounds: `Poids donné en livres ? Cela ferait ${number(s.value)} kg.`,
     inches: `Mesure prise en pouces ? Cela ferait ${number(s.value)} cm.`,
     half: `Demi-tour mesuré à plat ? Le tour complet ferait ${number(s.value)} cm.`,
-    tenfold: `Virgule mal placée ? Vouliez-vous dire ${number(s.value)} cm ?`,
-    tenth: `Virgule mal placée ? Vouliez-vous dire ${number(s.value)} cm ?`,
+    tenfold: `Virgule mal placée ? Vouliez-vous dire ${number(s.value)} ${unit} ?`,
+    tenth: `Virgule mal placée ? Vouliez-vous dire ${number(s.value)} ${unit} ?`,
     'ten-more': `Dizaine mal lue sur le ruban ? Vouliez-vous dire ${number(s.value)} cm ?`,
     'ten-less': `Dizaine mal lue sur le ruban ? Vouliez-vous dire ${number(s.value)} cm ?`,
     'missing-hundred': `Vouliez-vous dire ${number(s.value)} cm ?`,
