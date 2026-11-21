@@ -79,3 +79,13 @@ assert.ok(falseAlarm/N<.05,'few false alarms');
 assert.ok(report.pouces>.99&&report['demi-tour']>.99,'gross errors are always caught');
 assert.ok(report['dizaine (+10)']>.5,'a slipped ten is caught more often than not');
 assert.ok(THRESHOLD.check<THRESHOLD.error);
+
+// The figure of the analysis panel is drawn from the measurements themselves.
+const {landmarks,figurePath,profile}=await import('../dist/measure-analysis.js');
+const tall=landmarks({...ordinary,stature:194,entrejambe:91}),base=landmarks(ordinary);
+assert.ok(tall.H>base.H&&tall.crotchY>base.crotchY,'a taller man gives a taller figure with longer legs');
+assert.ok(landmarks({...ordinary,taille:110}).waist>base.waist&&landmarks({...ordinary,epaules:50}).shoulder>base.shoulder);
+assert.ok(base.nape>base.shoulderY&&base.shoulderY>base.chestY&&base.chestY>base.waistY&&base.waistY>base.hipY&&base.hipY>base.crotchY,'landmarks stay in order');
+for(let i=0;i<300;i++)assert.ok(!/NaN|Infinity/.test(figurePath(person())),'every simulated build can be drawn');
+assert.deepEqual(profile({...ordinary,poids:80}),['Veste ≈ 52','Pantalon ≈ 46','Carrure classique','Longueur régulière']);
+assert.equal(profile({...ordinary,poitrine:112,taille:88,stature:190})[2],'Carrure athlétique');
