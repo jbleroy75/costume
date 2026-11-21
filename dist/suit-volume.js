@@ -71,6 +71,7 @@ export function garmentGeometry(part,reflected=false,detail=1){
       let z=depth*cs;
       if(detail>1)z+=shape(part,y,x-center,radius,cs);
       if(part==='leg')z+=2.3*Math.exp(-sn*sn/.045)*Math.max(0,cs);
+      if(detail>1&&part==='leg')z-=1.5*Math.exp(-sn*sn/.03)*Math.max(0,-cs); // pressed crease down the back of the leg
       if(part==='body')z+=2.8*Math.exp(-Math.pow((Math.abs(x-191)-(150-y)*.31)/5,2))*Math.max(0,cs);
       if(part==='collar')z-=3;
       if(part==='leg')z-=6;
@@ -230,15 +231,24 @@ function gradientTexture(stops,size=512,grain=0){
 const BACK_SEAMS=`vec4 photoTexel=texture2D(map,vMapUv);
 vec4 clothTexel=texture2D(clothMap,vCloth);
 diffuseColor*=mix(clothTexel,photoTexel,vFront);
+// side-back seams curve in at the waist and out to the armholes; the side vents open at their foot
+float seamX=0.47-0.07*exp(-pow((vObject.y-3.7)/0.45,2.0))+0.13*smoothstep(3.9,4.55,vObject.y);
+// collar: its fall edge dips at the centre back and rises towards the shoulders
+float collarEdge=4.925+0.85*vObject.x*vObject.x;
+float nape=(1.0-vFront)*smoothstep(-0.02,-0.08,vObject.z)*step(abs(vObject.x),0.5);
+float underCollar=nape*step(vObject.y,collarEdge)*smoothstep(0.075,0.0,collarEdge-vObject.y);
+float collarLine=nape*(1.0-smoothstep(0.002,0.007,abs(vObject.y-collarEdge)));
 float behind=vPanel*(1.0-vFront)*smoothstep(-0.02,-0.08,vObject.z);
 float hem=step(2.62,vObject.y)*(1.0-step(3.16,vObject.y));
-float centre=behind*(1.0-smoothstep(0.003,0.009,abs(vObject.x)))*step(2.62,vObject.y)*(1.0-step(4.74,vObject.y));
+float centre=behind*(1.0-smoothstep(0.003,0.009,abs(vObject.x)))*step(2.62,vObject.y)*step(vObject.y,collarEdge);
 float centreVent=hem*float(vents==1);
 float lap=behind*centreVent*smoothstep(0.03,0.0,vObject.x)*step(0.0,vObject.x)*0.18;
-float sides=behind*hem*float(vents>=2)*(1.0-smoothstep(0.003,0.009,abs(abs(vObject.x)-0.47)));
-float sideLap=behind*hem*float(vents>=2)*smoothstep(0.03,0.0,0.47-abs(vObject.x))*step(abs(vObject.x),0.47)*0.18;
-float strap=behind*float(vents==3)*step(2.86,vObject.y)*(1.0-step(2.92,vObject.y))*(1.0-smoothstep(0.03,0.04,abs(abs(vObject.x)-0.47)));
-diffuseColor.rgb*=1.0-0.42*max(centre*(1.0+0.4*centreVent),sides*1.3)-lap-sideLap;
+float sideSeam=behind*step(2.62,vObject.y)*(1.0-step(4.56,vObject.y))*(1.0-smoothstep(0.003,0.008,abs(abs(vObject.x)-seamX)));
+float sides=max(sideSeam*0.7,behind*hem*float(vents>=2)*(1.0-smoothstep(0.003,0.009,abs(abs(vObject.x)-seamX))));
+float sideLap=behind*hem*float(vents>=2)*smoothstep(0.03,0.0,seamX-abs(vObject.x))*step(abs(vObject.x),seamX)*0.18;
+float strap=behind*float(vents==3)*step(2.86,vObject.y)*(1.0-step(2.92,vObject.y))*(1.0-smoothstep(0.03,0.04,abs(abs(vObject.x)-seamX)));
+diffuseColor.rgb*=1.0-0.3*max(centre*(1.0+0.6*centreVent),sides*1.3)-lap-sideLap;
+diffuseColor.rgb*=1.0-0.34*underCollar-0.3*collarLine;
 diffuseColor.rgb*=1.0-0.16*strap+0.10*strap*smoothstep(2.88,2.9,vObject.y);`;
 
 export function createStudio(host,original){
