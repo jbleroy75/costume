@@ -7,12 +7,6 @@ export function volumePixels(pixels,source,state){
   const {width,height,buttonMask,mask}=source,out=new Uint8ClampedArray(pixels);
   const hide=new Uint8Array(width*height),scale=width/512;
   for(let n=0;n<hide.length;n++)if(buttonMask[n]>.03)hide[n]=1;
-  for(const [bx,by] of buttonPositions(state)){
-    const cx=bx*scale,cy=by*scale,r=6.4*scale;
-    for(let y=Math.floor(cy-r);y<=cy+r;y++)for(let x=Math.floor(cx-r);x<=cx+r;x++){
-      if(x>=0&&y>=0&&x<width&&y<height&&(x-cx)**2+(y-cy)**2<=r*r)hide[y*width+x]=1;
-    }
-  }
   // grow the mask by four pixels to take the button's shadow and rim
   for(let pass=0;pass<4;pass++){
     const grown=new Uint8Array(hide);
@@ -21,6 +15,18 @@ export function volumePixels(pixels,source,state){
       if(!hide[n]&&(hide[n-1]||hide[n+1]||hide[n-width]||hide[n+width]))grown[n]=1;
     }
     hide.set(grown);
+  }
+  // buttons drawn by the preview at the chosen positions: just their disc, no shadow to take
+  for(const [bx,by] of buttonPositions(state)){
+    const cx=bx*scale,cy=by*scale,r=6*scale;
+    for(let y=Math.floor(cy-r);y<=cy+r;y++)for(let x=Math.floor(cx-r);x<=cx+r;x++){
+      if(x>=0&&y>=0&&x<width&&y<height&&(x-cx)**2+(y-cy)**2<=r*r)hide[y*width+x]=1;
+    }
+  }
+  // the buttonhole beside each button stays in the texture
+  for(const [bx,by] of buttonPositions(state)){
+    const cx=bx*scale,cy=by*scale;
+    for(let y=Math.floor(cy-2.4*scale);y<=cy+2.4*scale;y++)for(let x=Math.ceil(cx+5.4*scale);x<=cx+17*scale;x++)if(x>=0&&y>=0&&x<width&&y<height)hide[y*width+x]=0;
   }
   for(let y=0;y<height;y++)for(let x=0;x<width;x++){
     const n=y*width+x;if(!hide[n])continue;

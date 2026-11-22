@@ -7,9 +7,13 @@ const DOUBLE = [[217,186],[294,186],[233,228],[284,228],[234,271],[284,271]];
 // A button that leaves its place takes its buttonhole with it.
 const HOLES = [[255,222,258,268,221.5],[247,268,257,273,267.5],[233,228,237,249,228],[234,271,237,249,271]];
 const layouts = {
+  // Single-breasted buttons sit on one vertical line, each beside its buttonhole (the master photograph
+  // shows the lowest one undone, 2 cm off the line). Three buttons are evenly spaced below the lapels;
+  // on a 3-roll-2 the top button is hidden in the roll of the lapel: only its buttonhole shows.
   'simple-1-bouton': [SINGLE[0]],
-  'simple-3-boutons': [[261,198],...SINGLE],
-  '3-roll-2': [[259,203],...SINGLE],
+  'simple-2-boutons': [SINGLE[0],[255,268]],
+  'simple-3-boutons': [[255,210],[255,239],[255,268]],
+  '3-roll-2': [SINGLE[0],[255,268]],
   'croisee-4-sur-2': DOUBLE.slice(2),
   'croisee-6-sur-3': [[230,186],[286,186],...DOUBLE.slice(2)],
   'croisee-faux-2-sur-1': [[233,228],[284,228]],
@@ -66,7 +70,8 @@ export function applyCoatDetails(out, source, config) {
       });
     }
     for(const [bx,by,x0,x1,hy] of HOLES){
-      if(!master.some(point=>same(point,[bx,by]))||layout.some(point=>same(point,[bx,by])))continue;
+      // a buttonhole stays when a button still closes on it (same height, moved along it)
+      if(!master.some(point=>same(point,[bx,by]))||layout.some(point=>Math.abs(point[1]-by)<1.5&&Math.abs(point[0]-bx)<10))continue;
       eachRect(x0-1,hy-3.5,x1+1,hy+3.5,(i,x,y)=>{
         const fade=clamp(Math.min(x-x0+1,x1+1-x),0,1)*clamp(3.2-Math.abs(y-hy),0,1), frac=clamp((y-hy+4)/8,0,1);
         const top=index(x,hy-4),bottom=index(x,hy+4);
@@ -83,6 +88,19 @@ export function applyCoatDetails(out, source, config) {
         for(let c=0;c<3;c++)mix(i,c,stamp[(py*buttonSize+px)*3+c],fade);
       });
     }
+  }
+
+  if(layout&&!source.key.startsWith('double')){
+    // a stitched buttonhole beside every single-breasted button that has none in the photograph
+    const dash=(x0,x1,y,slope=0)=>eachRect(x0-1,y-2-Math.abs(slope)*(x1-x0),x1+1,y+2+Math.abs(slope)*(x1-x0),(i,x,py)=>{
+      const d=Math.abs(py-(y+slope*(x-x0))),fade=clamp(1.15-d,0,1)*clamp(Math.min(x-x0+1,x1+1-x),0,1);
+      for(let c=0;c<3;c++)mix(i,c,out[i+c]*.42,fade*.85);
+    });
+    for(const [x,y] of layout){
+      if(HOLES.some(([bx,by])=>master.some(point=>same(point,[bx,by]))&&Math.abs(y-by)<1.5&&Math.abs(x-bx)<10))continue;
+      dash(x+4,x+13,y);
+    }
+    if(tailoring.coatFront==='3-roll-2')dash(261,269,205,-.35); // on the roll of the lapel
   }
 
   // Capture the contrast of the existing left flap against the cloth above
