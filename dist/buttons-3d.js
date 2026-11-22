@@ -83,7 +83,8 @@ export function createButtons(scene,surface,reflections=null){
         add(at.position,at.normal,.034);
       }
       // Cuffs: four buttons on the outer back of each sleeve, from 2.5 cm above the hem.
-      const count=String(tailoring.sleeveDesign||'4-boutons').startsWith('4-boutons')?4:0;
+      // turn-back cuff: a single button on the cuff itself
+      const count=String(tailoring.sleeveDesign||'4-boutons').startsWith('4-boutons')?4:tailoring.sleeveDesign==='poignet-a-revers-fonctionnel'?1:0;
       const kissing=tailoring.sleeveSpacing==='jointifs-kissing',slanted=tailoring.sleeveAlignment==='incline';
       for(const mirror of [false,true])for(let k=0;k<count;k++){
         const at=surface.cuff(255-k*(kissing?3.6:4.6),k*(slanted?.1:0),mirror);

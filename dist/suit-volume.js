@@ -319,11 +319,14 @@ float underarm=smoothstep(0.46,0.66,ax)*exp(-pow((vObject.y-4.05)/0.55,2.0));
 float drape=sin((ax-0.3*(vObject.y-3.6))*46.0)*exp(-pow((vObject.y-3.95)/0.3,2.0))*exp(-pow((ax-0.3)/0.16,2.0));
 diffuseColor.rgb*=1.0+behind*(0.11*blades-0.07*spine-0.12*waist+0.07*seat-0.2*underarm+0.045*drape);
 // trousers from behind: jetted hip pockets with their button, seat seam
-float legRear=isLeg*rear;
-float pocket=legRear*(1.0-smoothstep(0.003,0.007,abs(vObject.y-2.4)))*(1.0-smoothstep(0.1,0.108,abs(ax-0.31)));
-float pocketLip=legRear*smoothstep(0.03,0.0,2.4-vObject.y)*step(vObject.y,2.4)*(1.0-smoothstep(0.1,0.108,abs(ax-0.31)));
-float pocketButton=legRear*(1.0-smoothstep(0.011,0.015,length(vec2(ax-0.31,vObject.y-2.365))));
-diffuseColor.rgb*=1.0-0.36*pocket-0.09*pocketLip-0.4*pocketButton;
+// hip pockets as chosen: both, the wearer's right only (1) or left only (2), with or without a button
+float hipSide=hipPockets==0?1.0:hipPockets==1?step(vObject.x,0.0):step(0.0,vObject.x);
+float legRear=isLeg*rear*hipSide;
+// hip pockets sit a hand below the waistband: under the skirt of the jacket, not on the thigh
+float pocket=legRear*(1.0-smoothstep(0.003,0.007,abs(vObject.y-2.69)))*(1.0-smoothstep(0.1,0.108,abs(ax-0.31)));
+float pocketLip=legRear*smoothstep(0.03,0.0,2.69-vObject.y)*step(vObject.y,2.69)*(1.0-smoothstep(0.1,0.108,abs(ax-0.31)));
+float pocketButton=legRear*(1.0-smoothstep(0.011,0.015,length(vec2(ax-0.31,vObject.y-2.655))));
+diffuseColor.rgb*=1.0-0.36*pocket-0.09*pocketLip-0.4*pocketButton*float(hipButtons);
 // wool: a fine twill and a faint mottling on the tiled cloth, fading out before they could shimmer
 float cover=(1.0-shown)*(1.0-cuffness);
 float twill=(vCloth.x*1.92+vObject.y)*520.0;
@@ -367,14 +370,14 @@ export function createStudio(host,original){
   const cloth=new T.CanvasTexture(document.createElement('canvas'));
   cloth.colorSpace=T.SRGBColorSpace;cloth.wrapS=cloth.wrapT=T.MirroredRepeatWrapping;
   cloth.anisotropy=texture.anisotropy;
-  const vents={value:2};
+  const vents={value:2},hipPockets={value:0},hipButtons={value:1};
   photo.onBeforeCompile=shader=>{
-    Object.assign(shader.uniforms,{clothMap:{value:cloth},vents});
+    Object.assign(shader.uniforms,{clothMap:{value:cloth},vents,hipPockets,hipButtons});
     shader.vertexShader=shader.vertexShader
       .replace('#include <common>','#include <common>\nattribute float front;\nattribute float panel;\nattribute vec2 uvFabric;\nvarying float vFront;\nvarying float vPanel;\nvarying vec2 vCloth;\nvarying vec3 vObject;\nvarying vec3 vObjN;')
       .replace('#include <begin_vertex>','#include <begin_vertex>\nvFront=front;vPanel=panel;vCloth=uvFabric;vObject=position;vObjN=normal;');
     shader.fragmentShader=shader.fragmentShader
-      .replace('#include <common>','#include <common>\nuniform sampler2D clothMap;\nuniform int vents;\nvarying float vFront;\nvarying float vPanel;\nvarying vec2 vCloth;\nvarying vec3 vObject;\nvarying vec3 vObjN;')
+      .replace('#include <common>','#include <common>\nuniform sampler2D clothMap;\nuniform int vents;\nuniform int hipPockets;\nuniform int hipButtons;\nvarying float vFront;\nvarying float vPanel;\nvarying vec2 vCloth;\nvarying vec3 vObject;\nvarying vec3 vObjN;')
       .replace('#include <map_fragment>',BACK_SEAMS)
       // the photograph already carries its own studio lighting: keep most of it as shot, so the navy stays
       // deep and the shirt white; the moving lights only model the volume on top
@@ -535,6 +538,6 @@ export function createStudio(host,original){
     update(color,state,swatch,relief){
       if(relief&&photo.bumpMap?.image!==relief){photo.bumpMap=new T.CanvasTexture(relief);photo.bumpMap.anisotropy=texture.anisotropy;photo.bumpScale=1.6;photo.needsUpdate=true;}
       if(swatch){cloth.image=swatch;cloth.needsUpdate=true;}
-      vents.value={'sans-fente':0,'fente-centrale':1,'deux-fentes-laterales':2,'fentes-laterales-avec-patte':3}[state?.tailoring?.coatVents]??2;for(const mesh of details)mesh.visible=state?.closure==='double'&&state.tailoring?.coatLapel==='en-pointe';{const front=state?.closure==='double'?null:state?.tailoring?.coatLapel==='crantes'?'notch':'peak';for(const [name,meshes] of Object.entries(lapels))for(const mesh of meshes)mesh.visible=name===front;}buttons?.update(state);rgb=color;if(software)cpuPixels=original.getContext('2d').getImageData(0,0,original.width,original.height).data;side.color.setRGB(...rgb.map(c=>c/255),T.SRGBColorSpace);shoes?.update(rgb);photo.sheenColor.setRGB(...rgb.map(c=>Math.min(1,c/255*1.25+.03)),T.SRGBColorSpace);texture.needsUpdate=true;paint();}
+      {const hip=String(state?.tailoring?.trouserBackPockets||'');hipPockets.value=hip.startsWith('droite')?1:hip.startsWith('gauche')?2:0;hipButtons.value=hip.includes('sans-bouton')?0:1;}vents.value={'sans-fente':0,'fente-centrale':1,'deux-fentes-laterales':2,'fentes-laterales-avec-patte':3}[state?.tailoring?.coatVents]??2;for(const mesh of details)mesh.visible=state?.closure==='double'&&state.tailoring?.coatLapel==='en-pointe';{const front=state?.closure==='double'?null:state?.tailoring?.coatLapel==='crantes'?'notch':'peak';for(const [name,meshes] of Object.entries(lapels))for(const mesh of meshes)mesh.visible=name===front;}buttons?.update(state);rgb=color;if(software)cpuPixels=original.getContext('2d').getImageData(0,0,original.width,original.height).data;side.color.setRGB(...rgb.map(c=>c/255),T.SRGBColorSpace);shoes?.update(rgb);photo.sheenColor.setRGB(...rgb.map(c=>Math.min(1,c/255*1.25+.03)),T.SRGBColorSpace);texture.needsUpdate=true;paint();}
   };
 }

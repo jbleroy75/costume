@@ -3,6 +3,9 @@
 // so the detail retains the selected dye, thread, highlights and surface grain.
 const SINGLE = [[255,222],[247,268]];
 const DOUBLE = [[217,186],[294,186],[233,228],[284,228],[234,271],[284,271]];
+// Buttonholes photographed beside the master buttons: [button x, button y, hole x0, hole x1, hole y].
+// A button that leaves its place takes its buttonhole with it.
+const HOLES = [[255,222,258,268,221.5],[247,268,257,273,267.5],[233,228,237,249,228],[234,271,237,249,271]];
 const layouts = {
   'simple-1-bouton': [SINGLE[0]],
   'simple-3-boutons': [[261,198],...SINGLE],
@@ -59,6 +62,14 @@ export function applyCoatDetails(out, source, config) {
       eachRect(cx-8,cy-8,cx+8,cy+8,(i,x,y)=>{
         const fade=clamp(7.8-Math.hypot(x-cx,y-cy),0,1), frac=clamp((y-cy+9)/18,0,1);
         const top=index(x,cy-9),bottom=index(x,cy+9);
+        for(let c=0;c<3;c++)mix(i,c,out[top+c]*(1-frac)+out[bottom+c]*frac,fade);
+      });
+    }
+    for(const [bx,by,x0,x1,hy] of HOLES){
+      if(!master.some(point=>same(point,[bx,by]))||layout.some(point=>same(point,[bx,by])))continue;
+      eachRect(x0-1,hy-3.5,x1+1,hy+3.5,(i,x,y)=>{
+        const fade=clamp(Math.min(x-x0+1,x1+1-x),0,1)*clamp(3.2-Math.abs(y-hy),0,1), frac=clamp((y-hy+4)/8,0,1);
+        const top=index(x,hy-4),bottom=index(x,hy+4);
         for(let c=0;c<3;c++)mix(i,c,out[top+c]*(1-frac)+out[bottom+c]*frac,fade);
       });
     }

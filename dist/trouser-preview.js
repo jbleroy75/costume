@@ -76,10 +76,14 @@ export function constructTrousers(source,tailoring,back){
           const edge=Math.max(Math.abs(uy-cy)-(radius-end),ux-length,-ux-3);
           shade+=.12*gauss((edge+1)/.45)-.46*gauss(edge/.6);
         }
-        const bd=Math.hypot(ux-(length-6),uy-cy);
-        if(bd<2.15)button=Math.max(button,clamp((2.15-bd)*3,0,1));
-        if(extension===5||extension===6){
-          const bx=extension===6?(row?10:-5):22,ax=Math.abs(ux-bx),ay=Math.abs(uy-cy);
+        // Buckled straps (multi-hole side strap, Gurkha) close with their buckle and carry no button;
+        // the Neapolitan double tab buttons near its root, the other extensions near their tip.
+        const buckled=extension===5||extension===6;
+        const bd=Math.hypot(ux-(extension===7?12:length-6),uy-cy);
+        if(!buckled&&bd<2.15)button=Math.max(button,clamp((2.15-bd)*3,0,1));
+        if(extension===5)for(const hole of [18,23,28])shade-=.55*gauss(Math.hypot(ux-hole,uy-cy)/.7);
+        if(buckled){
+          const bx=extension===6?(row?11:9):10,ax=Math.abs(ux-bx),ay=Math.abs(uy-cy);
           if(ax<3.2&&ay<radius)metal=Math.max(metal,clamp(1-Math.abs(Math.max(ax-2.5,ay-radius+.7)),0,1));
         }
       }
