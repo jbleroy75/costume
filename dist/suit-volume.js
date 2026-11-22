@@ -57,7 +57,7 @@ export function garmentGeometry(part,reflected=false,detail=1){
   // The traced sleeve starts as an open, flat-topped tube whose rim stood up as a blade above the shoulder
   // from behind: the studio geometry closes it into a rounded sleeve head set just under the shoulder line.
   // At the wrist the shirt cuff is its own narrower band coming out of the sleeve, a centimetre and a half long.
-  const rows=detail>1&&part==='sleeve'?[[64.6,115.4,116.6,1.5],[66,111.8,121,8],...profiles.sleeve.slice(1,-1),[257.3,89.7,117.3,12.4],[261.8,90.2,116.9,12.2]]:profiles[part];
+  const rows=detail>1&&part==='collar'?profiles.collar.slice(2):detail>1&&part==='sleeve'?[[64.6,115.4,116.6,1.5],[66,111.8,121,8],...profiles.sleeve.slice(1,-1),[257.3,89.7,117.3,12.4],[261.8,90.2,116.9,12.2]]:profiles[part];
   const pos=[],uv=[],idx=[],surface=[];
   const segments=Math.round(64*detail);
   const rings=[];
@@ -99,7 +99,9 @@ export function garmentGeometry(part,reflected=false,detail=1){
       if(detail>1&&part==='leg'&&y>496){
         const t=(y-496)/45;
         lift=t*t*(12+9*cs); // hem slopes from the instep down to the heel
-        z+=3.2*bell(y,512,9)*Math.max(0,cs)+(1.5+3*Math.max(0,cs))*t*t*cs; // the break: one soft fold above the shoe
+        const f=Math.max(0,cs);
+        // the break: the cloth rests on the instep, folds in once above it and rolls out again over the shoe
+        z+=f*(4.4*bell(y,504,6)-3.8*bell(y,514,3.6)+3.2*bell(y,525,6))+(1.5+3*f)*t*t*cs;
       }
       let tuck=0;
       if(detail>1&&part==='sleeve'&&y<74){
@@ -248,6 +250,35 @@ const singleFacings={
 };
 export const singleFrontDetails=lapel=>singleFacings[lapel].map(rows=>tailoredPanel(rows,true,true));
 
+// Shirt collar worn open, measured on the photograph (frame pixels): a stand round the neck and a leaf
+// folded over it, short behind, ending in a point on each side of the opening. One half; mirror for the other.
+export function shirtCollar(mirror){
+  const pos=[],col=[],idx=[],N=44,END=150*Math.PI/180,RX=20,RZ=17,ZC=-3;
+  const smooth=(a,b,v)=>{const t=Math.min(1,Math.max(0,(v-a)/(b-a)));return t*t*(3-2*t);};
+  const cross=6; // stand foot, fold, four steps down the leaf
+  for(let i=0;i<=N;i++){
+    const a=END*i/N,sn=Math.sin(a),cs=Math.cos(a),s=smooth(80*Math.PI/180,END,a);
+    const fold=[RX*sn,27+22*s*s,ZC-RZ*cs];
+    // towards the front the collar leaves the neck and lies on the shirt front
+    const rest=(x,y,z,lift)=>y>36?Math.max(z,chestDepth(191-x,y)+lift):z;
+    fold[2]=rest(fold[0],fold[1],fold[2],2.6);
+    const length=9+5*s,out=2.5+5.5*s;
+    const edge=[fold[0]+out*(sn+.25*s),fold[1]+length-2*s,ZC-(RZ+2.5)*cs];
+    edge[2]=rest(edge[0],edge[1],edge[2],1.4);
+    const foot=[(RX-1.5)*sn,fold[1]+11,ZC-(RZ-1.5)*cs];
+    const add=(p,shade)=>{pos.push((mirror?-1:1)*-p[0]/100,(542-p[1])/100,p[2]/100);col.push(shade,shade,shade);};
+    add(foot,.7);add(fold,1);
+    for(let k=1;k<=4;k++){
+      const v=k/4,bulge=1.6*Math.sin(Math.PI*v);
+      add([fold[0]+(edge[0]-fold[0])*v+bulge*sn,fold[1]+(edge[1]-fold[1])*v-.6*bulge,fold[2]+(edge[2]-fold[2])*v-bulge*cs+(s>0?bulge*s:0)],1-.1*v);
+    }
+    if(i)for(let k=0;k<cross-1;k++){const p=(i-1)*cross+k,q=i*cross+k;if(mirror)idx.push(p,p+1,q,p+1,q+1,q);else idx.push(p,q,p+1,p+1,q,q+1);}
+  }
+  const geo=new T.BufferGeometry();geo.setIndex(idx);
+  geo.setAttribute('position',new T.Float32BufferAttribute(pos,3));geo.setAttribute('color',new T.Float32BufferAttribute(col,3));
+  geo.computeVertexNormals();return geo;
+}
+
 export function doubleFrontDetails(){
   const overlap=[[165,209,171],[188,212,170],[220,214,170],[250,218,170],[276,215,171]];
   return [tailoredPanel(overlap,false),...facings.map(rows=>tailoredPanel(rows,true))];
@@ -348,7 +379,14 @@ diffuseColor.rgb*=mix(occlusion,1.0,shown);
 // two-piece sleeve: the hind-arm seam runs down the back of the arm to the cuff buttons
 float around=atan(sign(vObject.x)*objN.x,-objN.z);
 float hindSeam=isSleeve*(1.0-cuffness)*(1.0-shown)*(1.0-smoothstep(0.012,0.03+fwidth(around),abs(around-0.3)));
-diffuseColor.rgb*=1.0-0.2*hindSeam;`;
+diffuseColor.rgb*=1.0-0.2*hindSeam;
+// the break of the trousers: a shaded crease across the front of each leg, lit just above and below
+float legX=(abs(vObject.x)-0.35)/0.19;
+float breakY=0.312+0.022*legX*sign(vObject.x);
+float breakFront=isLeg*smoothstep(0.0,0.45,objN.z)*(1.0-0.55*legX*legX);
+float crease=exp(-pow((vObject.y-breakY)/0.011,2.0));
+float roll=exp(-pow((vObject.y-breakY-0.04)/0.026,2.0))+0.7*exp(-pow((vObject.y-breakY+0.04)/0.022,2.0));
+diffuseColor.rgb*=1.0+breakFront*(0.12*roll-0.42*crease);`;
 
 export function createStudio(host,original){
   let renderer;
@@ -394,7 +432,9 @@ export function createStudio(host,original){
   // The neck opening is closed a little below the collar's top edge, shaded like the inside of a collar.
   if(renderer){
     const inside=new T.Mesh(new T.CircleGeometry(1,40).rotateX(-Math.PI/2),new T.MeshBasicMaterial({map:gradientTexture([[0,'#a9a59e'],[.7,'#bdbab4'],[1,'#cfcdc8']],128)}));
-    inside.scale.set(.1,1,.085);inside.position.set(0,5.04,-.03);garment.add(inside);
+    inside.scale.set(.2,1,.16);inside.position.set(0,5.045,-.03);garment.add(inside);
+    const cotton=new T.MeshStandardMaterial({color:0xf0f1f5,roughness:.92,vertexColors:true,side:T.DoubleSide});
+    for(const mirror of [false,true]){const leaf=new T.Mesh(shirtCollar(mirror),cotton);leaf.castShadow=true;garment.add(leaf);}
     // and the inner face of the collar shows behind it, as on a ghost mannequin
     const lining=new T.Mesh(garment.children[5].geometry,new T.MeshStandardMaterial({color:0xd9d7d2,roughness:.95,side:T.BackSide}));garment.add(lining);
   }
