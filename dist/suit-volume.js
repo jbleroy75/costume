@@ -54,7 +54,10 @@ function shape(part,y,across,radius,cs){
 
 // detail > 1 densifies rings and segments for the WebGL studio; the CPU fallback keeps detail 1.
 export function garmentGeometry(part,reflected=false,detail=1){
-  const rows=profiles[part],pos=[],uv=[],idx=[],surface=[];
+  // The traced sleeve starts as an open, flat-topped tube whose rim stood up as a blade above the shoulder
+  // from behind: the studio geometry closes it into a rounded sleeve head set just under the shoulder line.
+  const rows=detail>1&&part==='sleeve'?[[64.6,115.4,116.6,1.5],[66,111.8,121,8],...profiles.sleeve.slice(1)]:profiles[part];
+  const pos=[],uv=[],idx=[],surface=[];
   const segments=Math.round(64*detail);
   const rings=[];
   // Detailed (WebGL) geometry follows a Catmull-Rom curve through the measured sections, so the
@@ -79,7 +82,11 @@ export function garmentGeometry(part,reflected=false,detail=1){
     const ringStart=pos.length/3;
     for(let i=0;i<=segments;i++){
       const a=i*2*Math.PI/segments-Math.PI,cs=Math.cos(a),sn=Math.sin(a);
-      const x=center+radius*sn;
+      // Seen from the front, the hem follows the photograph's rounded quarters; behind, the skirt hangs
+      // straight to a level hem instead of closing in like a balloon.
+      let across=radius,drop=0;
+      if(detail>1&&part==='body'&&y>274&&cs<0){const w=Math.min(1,-cs/.25),e=w*w*(3-2*w);across+=(69-radius)*e;drop=e*(y-274)*.8;}
+      const x=center+across*sn;
       let z=depth*(detail>1?(full=true,section(part,cs)):(full=false,cs));
       if(detail>1)z+=shape(part,y,x-center,radius,cs);
       if(part==='leg')z+=2.3*Math.exp(-sn*sn/.045)*Math.max(0,cs);
@@ -87,7 +94,7 @@ export function garmentGeometry(part,reflected=false,detail=1){
       if(part==='body')z+=2.8*Math.exp(-Math.pow((Math.abs(x-191)-(150-y)*.31)/5,2))*Math.max(0,cs);
       if(part==='collar')z-=3;
       if(part==='leg')z-=6;
-      let lift=0;
+      let lift=-drop;
       if(detail>1&&part==='leg'&&y>496){
         const t=(y-496)/45;
         lift=t*t*(12+9*cs); // hem slopes from the instep down to the heel
