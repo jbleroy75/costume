@@ -163,12 +163,13 @@ function chestDepth(x,y){
   return (full?BUILD.body[0]*Math.pow(cos,BUILD.body[1]):cos)*(d+2.8*Math.exp(-(((Math.abs(x-191)-(150-y)*.31)/5)**2)));
 }
 
-export function tailoredPanel(rows,rolled){
+// lying: the lapel rolls up from the roll line and comes back to rest on the chest at its outer edge.
+export function tailoredPanel(rows,rolled,lying=false){
   const positions=[],uv=[],indices=[],columns=14;
   function vertex(y,start,end,j){
-    const t=j/columns,x=start+(end-start)*t;
+    const t=j/columns,x=start+(end-start)*(lying?.07+.93*t:t); // a lying lapel starts just inside the cloth, clear of the shirt
     const taper=Math.min(1,Math.abs(end-start)/12);
-    const lift=rolled?(.75+5.4*Math.sin(Math.PI*t*.78)+1.4*t)*taper:.3+t*.55;
+    const lift=lying?(.45+2.9*Math.exp(-(((t-.24)/.27)**2)))*taper:rolled?(.75+5.4*Math.sin(Math.PI*t*.78)+1.4*t)*taper:.3+t*.55;
     const z=chestDepth(x,y)+lift+.4;
     positions.push((x-191)/100,(542-y)/100,z/100);
     uv.push(x/384,1-y/576);
@@ -230,6 +231,19 @@ export const surface={
     return {position,normal};
   }
 };
+
+// Single-breasted masters: collar leaf, gorge and lapel traced on each photograph, down to the top button.
+const singleFacings={
+  notch:[
+    [[40,167,165],[50,169,155],[61,170.5,146],[63.5,171,151],[66,171.5,141],[80,174,146.5],[92,176.5,151.5],[111,180,161],[128,183.5,171],[141,187,180],[150,190.5,190]],
+    [[40,214,216],[50,213,226],[61,212,235.5],[63.5,211.5,230.5],[66,211,240.5],[80,209.5,234.5],[92,208.5,230],[111,205,220],[128,199.5,210],[142,194,200],[151,190.5,191]]
+  ],
+  peak:[
+    [[40,167,165],[52,169,151],[60,170,146],[63,171,150],[64.5,171,133.5],[80,174,141.5],[92,176.5,151.5],[111,180,161],[128,183.5,171],[141,187,180],[150,190.5,190]],
+    [[40,214,216],[52,213,230],[60,212,235.5],[63,211.5,232],[64.5,211,248],[80,209.5,240],[92,208.5,230],[111,205,220],[128,199.5,210],[142,194,200],[151,190.5,191]]
+  ]
+};
+export const singleFrontDetails=lapel=>singleFacings[lapel].map(rows=>tailoredPanel(rows,true,true));
 
 export function doubleFrontDetails(){
   const overlap=[[165,209,171],[188,212,170],[220,214,170],[250,218,170],[276,215,171]];
@@ -368,9 +382,10 @@ export function createStudio(host,original){
   for(const [part,mirror] of [['leg',false],['leg',true],['body',false],['sleeve',false],['sleeve',true],['collar',false]]){
     const mesh=new T.Mesh(garmentGeometry(part,mirror,detail),renderer?photo:[photo,side]);mesh.castShadow=true;mesh.receiveShadow=true;garment.add(mesh);
   }
-  const details=doubleFrontDetails().map(geometry=>{
-    const mesh=new T.Mesh(geometry,[photo,side]);mesh.castShadow=true;mesh.receiveShadow=true;garment.add(mesh);return mesh;
-  });
+  // Raised lapels for each master; only the set matching the chosen front is shown.
+  const raised=geometry=>{const mesh=new T.Mesh(geometry,[photo,side]);mesh.castShadow=true;mesh.receiveShadow=true;mesh.visible=false;garment.add(mesh);return mesh;};
+  const details=doubleFrontDetails().map(raised);
+  const lapels=renderer?{notch:singleFrontDetails('notch').map(raised),peak:singleFrontDetails('peak').map(raised)}:{};
   // Lighting: soft fill, a high key light, and two rim lights that draw the silhouette out of the backdrop.
   scene.add(new T.HemisphereLight(0xfdfcfa,0xc9c5c0,1.55));
   const key=new T.DirectionalLight(0xfffaf4,2.3);key.position.set(-3.2,8,5);key.castShadow=true;
@@ -507,6 +522,6 @@ export function createStudio(host,original){
     update(color,state,swatch,relief){
       if(relief&&photo.bumpMap?.image!==relief){photo.bumpMap=new T.CanvasTexture(relief);photo.bumpMap.anisotropy=texture.anisotropy;photo.bumpScale=1.6;photo.needsUpdate=true;}
       if(swatch){cloth.image=swatch;cloth.needsUpdate=true;}
-      vents.value={'sans-fente':0,'fente-centrale':1,'deux-fentes-laterales':2,'fentes-laterales-avec-patte':3}[state?.tailoring?.coatVents]??2;for(const mesh of details)mesh.visible=state?.closure==='double'&&state.tailoring?.coatLapel==='en-pointe';buttons?.update(state);rgb=color;if(software)cpuPixels=original.getContext('2d').getImageData(0,0,original.width,original.height).data;side.color.setRGB(...rgb.map(c=>c/255),T.SRGBColorSpace);shoes?.update(rgb);photo.sheenColor.setRGB(...rgb.map(c=>Math.min(1,c/255*1.25+.03)),T.SRGBColorSpace);texture.needsUpdate=true;paint();}
+      vents.value={'sans-fente':0,'fente-centrale':1,'deux-fentes-laterales':2,'fentes-laterales-avec-patte':3}[state?.tailoring?.coatVents]??2;for(const mesh of details)mesh.visible=state?.closure==='double'&&state.tailoring?.coatLapel==='en-pointe';{const front=state?.closure==='double'?null:state?.tailoring?.coatLapel==='crantes'?'notch':'peak';for(const [name,meshes] of Object.entries(lapels))for(const mesh of meshes)mesh.visible=name===front;}buttons?.update(state);rgb=color;if(software)cpuPixels=original.getContext('2d').getImageData(0,0,original.width,original.height).data;side.color.setRGB(...rgb.map(c=>c/255),T.SRGBColorSpace);shoes?.update(rgb);photo.sheenColor.setRGB(...rgb.map(c=>Math.min(1,c/255*1.25+.03)),T.SRGBColorSpace);texture.needsUpdate=true;paint();}
   };
 }
