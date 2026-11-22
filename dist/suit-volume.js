@@ -303,7 +303,22 @@ float twill=(vCloth.x*1.92+vObject.y)*520.0;
 float fine=1.0-smoothstep(0.6,1.6,fwidth(twill));
 float mottle=sin(vCloth.x*61.0+sin(vObject.y*37.0)*1.7)*sin(vObject.y*53.0+sin(vCloth.x*29.0)*1.3);
 diffuseColor.rgb*=1.0+cover*(0.055*fine*sin(twill)+0.022*mottle);
-diffuseColor.rgb*=1.0-0.16*strap+0.10*strap*smoothstep(2.88,2.9,vObject.y);`;
+diffuseColor.rgb*=1.0-0.16*strap+0.10*strap*smoothstep(2.88,2.9,vObject.y);
+// occlusion where cloth faces cloth, which the lights alone cannot give: the inside of each sleeve and the
+// flank it hangs against, the inner thighs, and the trousers under the skirt of the jacket
+vec3 objN=normalize(vObjN);
+float isSleeve=step(2.5,vPanel);
+float inward=clamp(-sign(vObject.x)*objN.x,0.0,1.0);
+float armGap=isSleeve*inward*smoothstep(4.8,4.4,vObject.y);
+float flank=isBody*smoothstep(0.25,0.9,abs(objN.x))*smoothstep(2.75,3.1,vObject.y)*smoothstep(4.75,4.2,vObject.y);
+float thigh=isLeg*inward*smoothstep(1.3,2.35,vObject.y);
+float underSkirt=isLeg*smoothstep(2.4,2.64,vObject.y);
+float occlusion=(1.0-0.42*armGap)*(1.0-0.3*flank)*(1.0-0.3*thigh)*(1.0-0.3*underSkirt);
+diffuseColor.rgb*=mix(occlusion,1.0,shown);
+// two-piece sleeve: the hind-arm seam runs down the back of the arm to the cuff buttons
+float around=atan(sign(vObject.x)*objN.x,-objN.z);
+float hindSeam=isSleeve*(1.0-cuffness)*(1.0-shown)*(1.0-smoothstep(0.012,0.03+fwidth(around),abs(around-0.3)));
+diffuseColor.rgb*=1.0-0.2*hindSeam;`;
 
 export function createStudio(host,original){
   let renderer;
@@ -320,7 +335,7 @@ export function createStudio(host,original){
   const texture=new T.CanvasTexture(original);texture.colorSpace=T.SRGBColorSpace;
   texture.anisotropy=renderer?Math.min(16,renderer.capabilities.getMaxAnisotropy()):1;
   // Wool reads as cloth thanks to a soft sheen on grazing angles; the photo keeps its own folds and shadows.
-  const photo=new T.MeshPhysicalMaterial({map:texture,roughness:.9,metalness:0,sheen:.22,sheenRoughness:.5});
+  const photo=new T.MeshPhysicalMaterial({map:texture,roughness:.9,metalness:0,sheen:.4,sheenRoughness:.55});
   // Back and sides: the selected cloth, tiled at the scale of the front render (200 canvas px per unit).
   const cloth=new T.CanvasTexture(document.createElement('canvas'));
   cloth.colorSpace=T.SRGBColorSpace;cloth.wrapS=cloth.wrapT=T.MirroredRepeatWrapping;
@@ -329,14 +344,14 @@ export function createStudio(host,original){
   photo.onBeforeCompile=shader=>{
     Object.assign(shader.uniforms,{clothMap:{value:cloth},vents});
     shader.vertexShader=shader.vertexShader
-      .replace('#include <common>','#include <common>\nattribute float front;\nattribute float panel;\nattribute vec2 uvFabric;\nvarying float vFront;\nvarying float vPanel;\nvarying vec2 vCloth;\nvarying vec3 vObject;')
-      .replace('#include <begin_vertex>','#include <begin_vertex>\nvFront=front;vPanel=panel;vCloth=uvFabric;vObject=position;');
+      .replace('#include <common>','#include <common>\nattribute float front;\nattribute float panel;\nattribute vec2 uvFabric;\nvarying float vFront;\nvarying float vPanel;\nvarying vec2 vCloth;\nvarying vec3 vObject;\nvarying vec3 vObjN;')
+      .replace('#include <begin_vertex>','#include <begin_vertex>\nvFront=front;vPanel=panel;vCloth=uvFabric;vObject=position;vObjN=normal;');
     shader.fragmentShader=shader.fragmentShader
-      .replace('#include <common>','#include <common>\nuniform sampler2D clothMap;\nuniform int vents;\nvarying float vFront;\nvarying float vPanel;\nvarying vec2 vCloth;\nvarying vec3 vObject;')
+      .replace('#include <common>','#include <common>\nuniform sampler2D clothMap;\nuniform int vents;\nvarying float vFront;\nvarying float vPanel;\nvarying vec2 vCloth;\nvarying vec3 vObject;\nvarying vec3 vObjN;')
       .replace('#include <map_fragment>',BACK_SEAMS)
       // the photograph already carries its own studio lighting: keep most of it as shot, so the navy stays
       // deep and the shirt white; the moving lights only model the volume on top
-      .replace('#include <opaque_fragment>','outgoingLight=mix(outgoingLight,diffuseColor.rgb*mix(0.8,1.04,shown),mix(0.5,0.62,shown));\n#include <opaque_fragment>')
+      .replace('#include <opaque_fragment>','outgoingLight=mix(outgoingLight,diffuseColor.rgb*mix(0.8,1.04,shown),mix(0.2,0.62,shown));\n#include <opaque_fragment>')
       // relief from the photograph only where the photograph is shown
       .replace('#include <bumpmap_pars_fragment>',T.ShaderChunk.bumpmap_pars_fragment.replaceAll('bumpScale *','bumpScale * vFront *'));
   };
