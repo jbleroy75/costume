@@ -22,6 +22,9 @@ const sources=new Map(),loads=new Map();
 const canvas=$('suit'),context=canvas.getContext('2d'),before=$('before'),beforeContext=before.getContext('2d');
 const width=768,height=1152;
 
+// The 3D view is switched off for now: the flat preview is shown alone and the 3D engine is not loaded.
+// Set to true to bring it back; adding ?vue3d=1 to the address previews it meanwhile.
+const VOLUME_AVAILABLE=false||new URLSearchParams(location.search).get('vue3d')==='1';
 let studio3d,studioLoad,volumeEnabled=true,lastCloth=[43,49,64];
 let bust=new URLSearchParams(location.search).get('vue')==='buste',lastState;
 $('bust-view').addEventListener('click',()=>{bust=!bust;studio3d?.bust(bust);syncVolume();});
@@ -39,7 +42,7 @@ function updateVolume(rgb,state,tile=null,relief=null){
   lastState=state;
   lastCloth=rgb;lastTile=tile;lastRelief=relief;
   if(studio3d){studio3d.update(rgb,state,clothSwatch(),relief);return;}
-  if(studioLoad)return;
+  if(studioLoad||!VOLUME_AVAILABLE)return;
   studioLoad=import('./suit-volume.js').then(({createStudio})=>{
     studio3d=createStudio($('suit-volume'),volumeCanvas);
     $('volume-toggle').hidden=false;
