@@ -56,7 +56,8 @@ function shape(part,y,across,radius,cs){
 export function garmentGeometry(part,reflected=false,detail=1){
   // The traced sleeve starts as an open, flat-topped tube whose rim stood up as a blade above the shoulder
   // from behind: the studio geometry closes it into a rounded sleeve head set just under the shoulder line.
-  const rows=detail>1&&part==='sleeve'?[[64.6,115.4,116.6,1.5],[66,111.8,121,8],...profiles.sleeve.slice(1)]:profiles[part];
+  // At the wrist the shirt cuff is its own narrower band coming out of the sleeve, a centimetre and a half long.
+  const rows=detail>1&&part==='sleeve'?[[64.6,115.4,116.6,1.5],[66,111.8,121,8],...profiles.sleeve.slice(1,-1),[257.3,89.7,117.3,12.4],[261.8,90.2,116.9,12.2]]:profiles[part];
   const pos=[],uv=[],idx=[],surface=[];
   const segments=Math.round(64*detail);
   const rings=[];
@@ -78,7 +79,7 @@ export function garmentGeometry(part,reflected=false,detail=1){
     // The photograph is reliable on the front; the sides and back receive tiled cloth instead.
     // The neck reads the same all round, so it keeps the photograph everywhere. Shirt cuffs are flagged
     // (panel 3): away from the front they are painted as plain white cotton by the shader.
-    const neck=part==='collar'&&y<44,cuff=part==='sleeve'&&y>=257;
+    const neck=part==='collar'&&y<44,cuff=part==='sleeve'&&(detail>1?y>257.1:y>=257);
     const ringStart=pos.length/3;
     for(let i=0;i<=segments;i++){
       const a=i*2*Math.PI/segments-Math.PI,cs=Math.cos(a),sn=Math.sin(a);
@@ -111,7 +112,9 @@ export function garmentGeometry(part,reflected=false,detail=1){
       surface.push(i/segments,(542-y)/180);
       // Behind the neck the jacket collar rises over the shirt: only its top edge keeps the photograph.
       const t=Math.min(1,Math.max(0,(cs-.2)/.2));
-      front.push(neck&&(cs>=0||y<34)?1:t*t*(3-2*t));
+      // Studio: the photograph dresses the front only; round the neck the shirt collar is plain cotton
+      // (decided by height in the shader), like the cuffs, instead of a photograph stretched round a cylinder.
+      front.push(detail>1?(cuff?0:t*t*(3-2*t)):neck&&(cs>=0||y<34)?1:t*t*(3-2*t));
       panel.push(part==='body'?1:part==='leg'?2:cuff?4:part==='sleeve'?3:0);
     }
     // Cloth coordinates in world units (one scale everywhere): arc length measured from the back centre
@@ -270,8 +273,11 @@ function gradientTexture(stops,size=512,grain=0){
 const BACK_SEAMS=`vec4 photoTexel=texture2D(map,vMapUv);
 vec4 clothTexel=texture2D(clothMap,vCloth);
 // shirt cuffs: clean white cotton all round instead of the wrapped photograph
-float cuffness=smoothstep(3.5,4.0,vPanel);
-clothTexel=mix(clothTexel,vec4(0.9,0.9,0.89,1.0),cuffness);
+float neckBand=step(vPanel,0.5)*smoothstep(5.076,5.084,vObject.y);
+float cuffness=max(smoothstep(3.5,4.0,vPanel),neckBand);
+// the cuff is shaded where it leaves the sleeve, the collar band where it meets the jacket collar
+float cotton=mix(0.74,1.0,smoothstep(2.85,2.825,vObject.y))*mix(1.0,mix(0.8,1.0,smoothstep(5.08,5.105,vObject.y)),neckBand);
+clothTexel=mix(clothTexel,vec4(vec3(0.9,0.9,0.89)*cotton,1.0),cuffness);
 // where a leg or a sleeve overhangs the photographed outline, the photograph shows its backdrop:
 // those parts are dressed with the cloth (or the cuff) like the sides
 float shown=vFront;
@@ -381,6 +387,13 @@ export function createStudio(host,original){
   const detail=renderer?2:1;
   for(const [part,mirror] of [['leg',false],['leg',true],['body',false],['sleeve',false],['sleeve',true],['collar',false]]){
     const mesh=new T.Mesh(garmentGeometry(part,mirror,detail),renderer?photo:[photo,side]);mesh.castShadow=true;mesh.receiveShadow=true;garment.add(mesh);
+  }
+  // The neck opening is closed a little below the collar's top edge, shaded like the inside of a collar.
+  if(renderer){
+    const inside=new T.Mesh(new T.CircleGeometry(1,40).rotateX(-Math.PI/2),new T.MeshBasicMaterial({map:gradientTexture([[0,'#a9a59e'],[.7,'#bdbab4'],[1,'#cfcdc8']],128)}));
+    inside.scale.set(.1,1,.085);inside.position.set(0,5.04,-.03);garment.add(inside);
+    // and the inner face of the collar shows behind it, as on a ghost mannequin
+    const lining=new T.Mesh(garment.children[5].geometry,new T.MeshStandardMaterial({color:0xd9d7d2,roughness:.95,side:T.BackSide}));garment.add(lining);
   }
   // Raised lapels for each master; only the set matching the chosen front is shown.
   const raised=geometry=>{const mesh=new T.Mesh(geometry,[photo,side]);mesh.castShadow=true;mesh.receiveShadow=true;mesh.visible=false;garment.add(mesh);return mesh;};
